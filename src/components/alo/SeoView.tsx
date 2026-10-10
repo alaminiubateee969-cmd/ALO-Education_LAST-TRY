@@ -62,7 +62,7 @@ export default function SeoView() {
       <SectionHeader
         title="SEO Command Center"
         bn="এসইও কমান্ড সেন্টার"
-        desc="রিয়েল LLM দিয়ে কনটেন্ট ব্রিফ তৈরি — keyword cluster, content outline, FAQ, SEO title, meta description, schema। ৮৫+ স্কোর = publish-ready।"
+        desc="স্থানীয় Ollama মডেল চালু থাকলে AI-তৈরি কনটেন্ট ব্রিফ; না থাকলে চিহ্নিত local fallback — keyword cluster, outline, FAQ ও SEO metadata। মানব-পর্যালোচনা ছাড়া publish-ready নয়।"
         icon={<Search className="h-5 w-5" />}
       />
 

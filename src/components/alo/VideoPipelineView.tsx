@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { SectionHeader, StatusPill } from "./primitives";
+import { SectionHeader } from "./primitives";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -9,8 +9,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { QualityPipelineSummary } from "./PipelineRunner";
+import type { QualityAgentPass } from "@/lib/ai";
 import { useToast } from "@/hooks/use-toast";
-import { Video, Film, Plus, Trash2, Clock, Users, ImageIcon, Mic, Play, Loader2, Clapperboard } from "lucide-react";
+import { Video, Film, Plus, Trash2, Clock, Users, ImageIcon, Mic, Play, Loader2, Clapperboard, Download } from "lucide-react";
 
 interface Scene {
   id: string;
@@ -87,6 +89,9 @@ export default function VideoPipelineView() {
   const [scenes, setScenes] = useState<Scene[]>(DEFAULT_SCENES);
   const [title, setTitle] = useState("শিশুর ভাষা বিকাশে মায়ের ভূমিকা");
   const [selected, setSelected] = useState<Scene | null>(null);
+  const [rendering, setRendering] = useState(false);
+  const [renderError, setRenderError] = useState("");
+  const [renderedVideo, setRenderedVideo] = useState<{ jobId: string; video: { fileUrl: string; duration: number; fileSizeMb: number }; visualAssetStatus: string; note: string; qualityPipeline: QualityAgentPass[] } | null>(null);
 
   const totalDuration = scenes.reduce((s, sc) => s + sc.duration, 0);
 
@@ -119,6 +124,41 @@ export default function VideoPipelineView() {
 
   const charEmoji = (id: string) => CHARACTERS.find((c) => c.id === id)?.emoji ?? "🎬";
 
+  const renderVideo = async () => {
+    if (totalDuration < 10 || totalDuration > 600) {
+      toast({ title: "সময়সীমা ঠিক করুন", description: "ভিডিওর দৈর্ঘ্য ১০–৬০০ সেকেন্ডের মধ্যে হতে হবে।", variant: "destructive" });
+      return;
+    }
+    setRendering(true);
+    setRenderError("");
+    setRenderedVideo(null);
+    try {
+      const response = await fetch("/api/video/cinematic", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          topic: title,
+          text: scenes.map((scene) => scene.voiceover.trim()).filter(Boolean).join("\n"),
+          visualPrompts: scenes.map((scene) => scene.visualPrompt),
+          visualStyle: "warm Bengali editorial illustration",
+          mood: "hopeful",
+          duration: totalDuration,
+          voice: "bn",
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok || data.status === "FAILED") throw new Error(data.error ?? data.message ?? "Local video render failed");
+      setRenderedVideo({ ...data, qualityPipeline: data.qualityPipeline ?? [] });
+      toast({ title: "Local video rendered", description: `${data.video?.duration ?? totalDuration}s · ${data.visualAssetStatus ?? "local visuals"}` });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Local video render failed";
+      setRenderError(message);
+      toast({ title: "ভিডিও তৈরি হয়নি", description: message, variant: "destructive" });
+    } finally {
+      setRendering(false);
+    }
+  };
+
   return (
     <div className="alo-fade-up space-y-5">
       <SectionHeader
@@ -146,11 +186,8 @@ export default function VideoPipelineView() {
             <Input value={title} onChange={(e) => setTitle(e.target.value)} className="mt-1" />
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" size="sm" className="h-9">
-              <ImageIcon className="h-3.5 w-3.5 mr-1.5" /> Storyboard Images
-            </Button>
-            <Button size="sm" className="bg-amber-500 hover:bg-amber-600 h-9">
-              <Play className="h-3.5 w-3.5 mr-1.5" /> Render Preview
+            <Button type="button" size="sm" onClick={renderVideo} disabled={rendering} className="bg-amber-500 hover:bg-amber-600 h-9 text-white">
+              {rendering ? <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> Local render running…</> : <><Play className="h-3.5 w-3.5 mr-1.5" /> Render local cinematic video</>}
             </Button>
           </div>
         </div>
@@ -326,14 +363,23 @@ export default function VideoPipelineView() {
               </div>
               <div className="pt-2 border-t border-border/40">
                 <p className="text-[10px] text-muted-foreground flex items-center gap-1">
-                  <Video className="h-2.5 w-2.5" /> এই দৃশ্যের জন্য FFmpeg দরকার —
-                  <StatusPill status="blocked_external_setup" />
+                  <Video className="h-2.5 w-2.5" /> Local FFmpeg + speech engine required; ComfyUI images are optional.
                 </p>
               </div>
             </div>
           )}
         </Card>
       </div>
+
+      {renderError && <Card role="alert" className="border-rose-300 bg-rose-50 p-4 text-sm text-rose-900 dark:border-rose-900 dark:bg-rose-950/20 dark:text-rose-100">{renderError}</Card>}
+      {renderedVideo && (
+        <Card className="space-y-3 p-4 sm:p-5">
+          <div className="flex flex-wrap items-start justify-between gap-3"><div><h3 className="font-semibold">Rendered local cinematic video</h3><p className="text-xs text-muted-foreground">{renderedVideo.video.duration}s · {renderedVideo.visualAssetStatus} · job {renderedVideo.jobId}</p></div><a href={renderedVideo.video.fileUrl} download className="inline-flex items-center gap-2 rounded-md border border-border px-3 py-2 text-xs font-medium hover:bg-muted"><Download className="h-3.5 w-3.5" />Download MP4</a></div>
+          <video controls preload="metadata" className="max-h-[70vh] w-full rounded-xl bg-black" src={renderedVideo.video.fileUrl}>Your browser does not support video playback.</video>
+          <p className="text-[11px] leading-relaxed text-muted-foreground">{renderedVideo.note}</p>
+          {renderedVideo.qualityPipeline.length > 0 && <QualityPipelineSummary passes={renderedVideo.qualityPipeline} />}
+        </Card>
+      )}
 
       {/* Export specs */}
       <Card className="p-4">

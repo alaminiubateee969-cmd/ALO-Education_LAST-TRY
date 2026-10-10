@@ -39,7 +39,9 @@ export async function GET() {
   const totalCost = AGENTS.reduce((s, a) => s + a.estimatedCostUsd, 0);
   const localCount = AGENTS.filter((a) => a.provider === "local").length;
   const externalCount = AGENTS.filter((a) => a.provider === "external-optional").length;
-  const llmCount = AGENTS.filter((a) => a.provider === "zai-llm").length;
+  // AI generation uses only private Ollama/ComfyUI or deterministic local fallbacks.
+  // This is estimated paid-AI API spend; hardware, storage, and electricity are excluded.
+  const paidApiCount = 0;
   const localPct = Math.round((localCount / AGENTS.length) * 100);
   const blockedCount = AGENTS.filter((a) => a.status === "blocked_external_setup").length;
 
@@ -52,7 +54,7 @@ export async function GET() {
       totalCost: Number(totalCost.toFixed(4)),
       localCount,
       externalCount,
-      llmCount,
+      paidApiCount,
       localPct,
       blockedCount,
       avgCostPerAgent: Number((totalCost / AGENTS.length).toFixed(4)),
