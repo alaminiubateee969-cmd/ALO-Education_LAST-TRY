@@ -131,7 +131,7 @@ export function ProviderTag({ provider, fallback }: { provider: string; fallback
         "inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-medium",
         fallback ? "bg-amber-100 text-amber-700" : "bg-emerald-100 text-emerald-700"
       )}
-      title={fallback ? "Local fallback used — no paid model ran" : "Live model"}
+      title={fallback ? "Deterministic local fallback used; no model response was returned" : `Configured local provider: ${provider}`}
     >
       {fallback ? "fallback" : provider}
     </span>

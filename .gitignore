@@ -45,6 +45,8 @@ storage/backups/
 # existing media to object storage.
 storage/videos/
 storage/scene-assets/
+storage/audio/
+public/generated/
 
 # Next.js / TypeScript build byproducts (both appeared as untracked after a build)
 next-env.d.ts

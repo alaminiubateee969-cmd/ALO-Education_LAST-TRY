@@ -19,17 +19,18 @@ Production standalone startup is configured for Node.js 22 and the intended appl
 
 ## Feature inventory — source presence is not live verification
 
-The repository contains UI/API code for content generation, approvals, analytics, RAG, social integrations, Telegram, video, family media, backups, and operations. Some paths use local fallbacks or demo behavior. Their presence does not prove that an external provider is configured or that a production workflow succeeds.
+The repository contains UI/API code for content generation, approvals, analytics, RAG, social integrations, Telegram, video, family media, backups, and operations. New modules include a company-scoped admissions CRM (pipeline, follow-ups, activity history), server-calculated quotations with print-to-PDF workflow, an editable campaign-kit library, and an OpenAPI 3.1 reference. Some paths use local fallbacks or demo behavior. Their presence does not prove that an external provider is configured or that a production workflow succeeds.
 
-The AI implementation currently imports `z-ai-web-dev-sdk`; there is no OpenAI adapter. Redis, n8n, and Resend integrations are not present in the application source. Do not describe those services as working until the corresponding application-level tests pass.
+AI/media generation is now local-only in source: private Ollama for text, private ComfyUI for images, local Piper/eSpeak speech, FFmpeg rendering, and a built-in procedural instrumental synthesizer. The former hosted SDK dependency was removed. Missing local models are reported as template/placeholder fallbacks; local model installation and generated-media runtime remain unverified. See `LOCAL_AI.md`. Redis, n8n, and Resend integrations are not present in the application source.
 
 The backup route's XOR obfuscation is **not encryption** and is not a safe production backup. It copies a local SQLite file even though Prisma is configured for MySQL. Do not rely on it for production backup or rollback.
 
 ## Production status
 
-- Authentication/RBAC: not implemented; all 39 API route files are unguarded.
-- Database: MySQL Prisma schema exists, but no checked-in migration history exists.
+- Authentication: single-admin NextAuth credentials session and production middleware are implemented, but not live-verified. RBAC/multi-user roles are not implemented. Development mode bypasses middleware unless `ALO_REQUIRE_AUTH=true`.
+- Database: MySQL Prisma schema has 31 models and one checked-in CRM delta migration. The legacy schema does not yet have a reviewed baseline migration; no production database change is approved.
 - Upload storage: current code writes below the process working directory and does not honor the configured `UPLOAD_DIR`.
+- CRM data: enquiry contact details and consent preferences are persisted per workspace. Do not store passports, immigration case files, health data, or payment-card details; secure CSV exports and apply a reviewed retention policy.
 - Deployment: the current working branch has a fail-closed deployment gate; it will not deploy. The audited `main` workflow at `03361c5f6bf19727907452ed0edc5247948b9466` used unverified host/path/process assumptions and must not be run.
 - Build, login/session, API, storage, integrations, DNS, HTTPS, and live health: not verified.
 

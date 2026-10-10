@@ -23,6 +23,8 @@ model Company {
   active    Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  leads Lead[]
 }
 
 model AIAgentRun {
@@ -40,6 +42,20 @@ model AIAgentRun {
 
   @@index([agentId])
   @@index([status])
+}
+
+model AdminOtpChallenge {
+  id              String    @id @default(cuid())
+  phoneHash       String    @unique
+  otpHash         String
+  expiresAt       DateTime
+  consumedAt      DateTime?
+  failedAttempts  Int       @default(0)
+  sentAt          DateTime?
+  windowStartedAt DateTime  @default(now())
+  sendCount       Int       @default(0)
+
+  @@index([expiresAt, consumedAt])
 }
 
 model ContentIdea {
@@ -460,4 +476,87 @@ model AgentMessage {
   @@index([recipientAgentId])
   @@index([status])
   @@index([taskId])
+}
+
+// ===== Admissions CRM + Quote management =====
+// Personal data is limited to enquiry/contact fields. Do not use these records
+// for passport, immigration case files, health data, or other special-category data.
+model Lead {
+  id               String   @id @default(cuid())
+  companyId        String
+  company          Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  fullName         String
+  email            String?
+  phone            String?
+  targetCountry    String?
+  studyLevel       String?
+  courseInterest   String?
+  intake           String?
+  source           String   @default("website") // website | referral | social | event | partner | other
+  stage            String   @default("new") // new | contacted | qualified | consultation_booked | proposal_sent | enrolled | lost
+  consentStatus    String   @default("unknown") // unknown | consented | opted_out
+  consentRecordedAt DateTime?
+  nextFollowUp     DateTime?
+  notes            String?  @db.Text
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  activities LeadActivity[]
+  quotations Quotation[]
+
+  @@index([companyId, stage])
+  @@index([companyId, nextFollowUp])
+  @@index([companyId, createdAt])
+  @@index([email])
+}
+
+model LeadActivity {
+  id        String   @id @default(cuid())
+  leadId    String
+  lead      Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  type      String   @default("note") // created | note | call | email | whatsapp | meeting | follow_up | stage_change | quotation
+  body      String   @db.Text
+  actor     String   @default("admin")
+  createdAt DateTime @default(now())
+
+  @@index([leadId, createdAt])
+}
+
+model Quotation {
+  id             String   @id @default(cuid())
+  leadId         String
+  lead           Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  number         String   @unique
+  title          String
+  currency       String   @default("GBP") // GBP | USD | EUR | BDT
+  status         String   @default("draft") // draft | sent | accepted | declined | expired
+  subtotal       Decimal  @default(0) @db.Decimal(12, 2)
+  discountAmount Decimal  @default(0) @db.Decimal(12, 2)
+  taxRate        Decimal  @default(0) @db.Decimal(5, 2)
+  taxAmount      Decimal  @default(0) @db.Decimal(12, 2)
+  total          Decimal  @default(0) @db.Decimal(12, 2)
+  validUntil     DateTime?
+  terms          String?  @db.Text
+  notes          String?  @db.Text
+  acceptedAt     DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  items QuotationItem[]
+
+  @@index([leadId, status])
+  @@index([createdAt])
+}
+
+model QuotationItem {
+  id          String    @id @default(cuid())
+  quotationId String
+  quotation   Quotation @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+  description String
+  quantity    Int       @default(1)
+  unitPrice   Decimal   @default(0) @db.Decimal(12, 2)
+  lineTotal   Decimal   @default(0) @db.Decimal(12, 2)
+  position    Int       @default(0)
+
+  @@index([quotationId, position])
 }

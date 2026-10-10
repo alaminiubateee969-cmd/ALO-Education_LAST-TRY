@@ -1,8 +1,13 @@
 # ALO Learning Journey — Security
 
 ## Authentication
-- Status: NOT_IMPLEMENTED (no auth middleware)
-- Production requires: NextAuth.js + RBAC middleware
+- Status: a single-administrator credentials flow is implemented with NextAuth.js JWT sessions, an HttpOnly/SameSite cookie, and production middleware guarding the application and API routes. `/api/health`, `/api/auth/*`, and `/login` are public by design.
+- Production fails closed unless `NEXTAUTH_SECRET`, `ADMIN_EMAIL`, a valid `ADMIN_PASSWORD_HASH`, `ADMIN_OTP_PHONE`, `HTTPSMS_API_KEY`, and `HTTPSMS_FROM` are configured. Passwords are verified with scrypt; a second SMS code is required in production; no default account or public registration exists.
+- OTP challenges store HMACs rather than plaintext phone numbers/codes, expire after five minutes, are consumed once, allow at most five verification attempts, and are limited to three sends per hour with a 60-second resend cooldown. The HTTP SMS gateway only confirms queue acceptance; carrier/handset delivery is not guaranteed. No SMS was sent or live integration tested in this environment.
+- The OTP send route is publicly reachable by design before sign-in, but requires same-origin POST and valid administrator email/password before it asks the configured provider to send to the fixed phone. The API returns an intentionally generic accepted message for invalid credentials.
+- Configure secrets outside Git. Generate a hash with `read -rsp 'Admin password: ' p && printf '%s' "$p" | node scripts/hash-admin-password.mjs && unset p`.
+- Development mode bypasses middleware for preview convenience unless `ALO_REQUIRE_AUTH=true`; do not use development mode with real CRM data.
+- This is single-admin authentication, not RBAC or multi-user/team authorization. Production login, cookie behavior, HTTPS proxying, and protected routes still need end-to-end verification before exposure.
 
 ## Secrets Management
 - `.env` is in `.gitignore` — never committed
@@ -36,21 +41,19 @@ Verified by decoding the committed artefact and inspecting it column by column
   password, or API-key column. `SocialConnection` holds only `id, platform,
   accountName, handle, status, scopesJson, tokenExpiry, lastSyncAt, createdAt,
   updatedAt` — and `scopesJson` was **NULL in all 11 rows**. The only
-  token-named field anywhere in the 27-model schema is `tokenExpiry DateTime?`,
-  a timestamp. **No OAuth token rotation is required.**
+  token-named field in the then-current 27-model schema was `tokenExpiry DateTime?`,
+  a timestamp. The current schema has 31 models and still contains no OAuth credential field. **No OAuth token rotation was indicated by that inspected snapshot.**
 - **But real business data was public:** 383 rows including `AnalyticsSnapshot`
   (315), `AuditLog` (13), `ApprovalItem` (11), `CommentInbox` (8),
   `ContentPackage` (7), `ContentIdea` (4), `RagDocument` (4), `PublishedPost`
   (3), `TelegramCommand` (3), `Notification` (3), `Company` (1).
 - That snapshot is also **stale and not a valid restore point**: 15 tables
-  against the current 27 models, `createdAt` 2026-08-09 with `retentionDays: 14`.
+  against the then-current 27 models (the schema now has 31), `createdAt` 2026-08-09 with `retentionDays: 14`.
 
 ## Known Limitations
-- **No authentication/RBAC — all 39 API routes are open.** Includes
-  `DELETE /api/backups`, which `fs.unlink`s backup files, so an anonymous
-  request can destroy backups. Also `api/seed`, `api/settings`, `api/telegram`,
-  `api/family-studio`, `api/video/*`, `api/images/generate`, `api/notifications`.
-- No CSRF protection
-- No rate limiting
-- Production deployment requires auth middleware — or a proxy-level allowlist /
-  VPN — **before** this is reachable on a public interface.
+- **No role-based authorization or multi-user isolation.** The current credential is a single admin account. The browser-selected workspace header is a scope selector, not a security boundary between users.
+- Development mode is intentionally unauthenticated by default for local preview; real or production data must never be used there. Set `ALO_REQUIRE_AUTH=true` to test the login flow locally.
+- The SMS-code endpoint has per-admin resend and attempt limits, but there is no general IP-based login/API rate limiting or primary-password lockout; configure a trusted edge/proxy rate limit before public exposure.
+- Database migrations have not been reconciled against the live server. See `DEPLOYMENT.md` before applying the checked-in CRM delta migration.
+- CRM records contain personal contact data. Keep exports secure, avoid special-category data and identity documents, and apply the organisation's retention/deletion policy. The UI does not send marketing messages; `consentStatus` is an internal preference record, not proof of lawful basis.
+- Email marketing refinement produces a human-review draft only. There is no sender, consent enforcement, suppression list, unsubscribe handling, or delivery pipeline; do not configure or claim email delivery from unused SMTP variables.

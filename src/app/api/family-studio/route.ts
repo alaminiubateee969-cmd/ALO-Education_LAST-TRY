@@ -6,6 +6,14 @@ import path from "path";
 
 const UPLOAD_DIR = path.join(process.cwd(), "storage", "uploads", "family");
 
+function resolveFamilyAssetPath(filePath: string): string | null {
+  const match = /^\/storage\/uploads\/family\/([a-zA-Z0-9_-]{1,128})\/([a-zA-Z0-9_.-]{1,180})$/.exec(filePath);
+  if (!match || match[2] === "." || match[2] === "..") return null;
+  const resolved = path.join(/*turbopackIgnore: true*/ UPLOAD_DIR, match[1], match[2]);
+  const relative = path.relative(UPLOAD_DIR, resolved);
+  return relative.startsWith("..") || path.isAbsolute(relative) ? null : resolved;
+}
+
 async function ensureUploadDir(profileId: string) {
   const dir = path.join(UPLOAD_DIR, profileId);
   try { await fs.mkdir(dir, { recursive: true }); } catch {}
@@ -74,7 +82,8 @@ export async function POST(req: Request) {
         const file = fileEntry as File;
         if (!file || typeof file === "string") continue;
 
-        const ext = file.name.split(".").pop() || "bin";
+        const extension = (file.name.split(".").pop() || "bin").toLowerCase();
+        const ext = /^[a-z0-9]{1,8}$/.test(extension) ? extension : "bin";
         const fileName = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`;
         const filePath = path.join(dir, fileName);
         const buffer = Buffer.from(await file.arrayBuffer());
@@ -170,10 +179,8 @@ export async function POST(req: Request) {
 
   if (body.action === "delete_asset" && body.id) {
     const asset = await db.familyReferenceAsset.findUnique({ where: { id: body.id } });
-    if (asset?.filePath) {
-      const fullPath = path.join(process.cwd(), asset.filePath.replace(/^\//, ""));
-      try { await fs.unlink(fullPath); } catch {}
-    }
+    const fullPath = asset?.filePath ? resolveFamilyAssetPath(asset.filePath) : null;
+    if (fullPath) await fs.unlink(fullPath).catch(() => undefined);
     await db.familyReferenceAsset.delete({ where: { id: body.id } });
     await db.auditLog.create({
       data: { actor: "admin", action: "family_asset.delete", detail: `Deleted asset ${body.id}`, severity: "warn" },
@@ -238,9 +245,9 @@ export async function POST(req: Request) {
   if (body.action === "delete" && body.id) {
     // Delete profile + all assets (GDPR-style right to erasure)
     const assets = await db.familyReferenceAsset.findMany({ where: { profileId: body.id } });
-    for (const a of assets) {
-      const fullPath = path.join(process.cwd(), a.filePath.replace(/^\//, ""));
-      try { await fs.unlink(fullPath); } catch {}
+    for (const asset of assets) {
+      const fullPath = resolveFamilyAssetPath(asset.filePath);
+      if (fullPath) await fs.unlink(fullPath).catch(() => undefined);
     }
     await db.familyReferenceAsset.deleteMany({ where: { profileId: body.id } });
     await db.familyProfile.delete({ where: { id: body.id } });
