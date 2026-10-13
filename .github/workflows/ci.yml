@@ -38,7 +38,7 @@ jobs:
 
       - name: Validate Prisma and generate client
         env:
-          DATABASE_URL="mysql://user_learn:Alo_Learn_2026!@127.0.0.1:3306/db_learn"
+          DATABASE_URL="mysql://ci:ci@127.0.0.1:3306/ci"
         run: |
           npx prisma validate
           npx prisma generate
@@ -49,7 +49,12 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      - name: Tests (incl. Sharp lazy-load regression)
+        run: |
+          node --test tests/image-processing.test.mjs
+          bash scripts/test-deploy-rollback.sh
+
       - name: Production build
         env:
-          DATABASE_URL="mysql://user_learn:Alo_Learn_2026!@127.0.0.1:3306/db_learn"
+          DATABASE_URL="mysql://ci:ci@127.0.0.1:3306/ci"
         run: npm run build

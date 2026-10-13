@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import sharp from "sharp";
+import { svgToPngFile } from "@/lib/image-processing";
 import { executeAsAgent, recordAgentPipelineStages } from "@/lib/agent-runtime";
 import { generateImageFile, generateNarrationScript, type QualityAgentPass } from "@/lib/ai";
 import { generateProceduralInstrumental, resolveFfmpegBinary, resolveFfprobeBinary, synthesizeLocalSpeech, type MusicMood } from "@/lib/local-audio";
@@ -93,7 +93,7 @@ async function createFallbackIllustration(outputPath: string, index: number) {
   ];
   const [base, soft, accent] = palettes[index % palettes.length];
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="768" height="1344" viewBox="0 0 768 1344"><defs><linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="${base}"/><stop offset="1" stop-color="${soft}"/></linearGradient><radialGradient id="glow"><stop stop-color="${accent}" stop-opacity=".42"/><stop offset="1" stop-color="${accent}" stop-opacity="0"/></radialGradient></defs><rect width="768" height="1344" fill="url(#bg)"/><circle cx="385" cy="475" r="350" fill="url(#glow)"/><circle cx="150" cy="220" r="76" fill="${accent}" opacity=".15"/><circle cx="650" cy="880" r="128" fill="${accent}" opacity=".14"/><path d="M100 1040c115-100 195-100 290 0s180 100 278 0" fill="none" stroke="${accent}" stroke-width="12" stroke-linecap="round" opacity=".5"/><path d="M170 1120c95-72 168-72 252 0s154 72 230 0" fill="none" stroke="${accent}" stroke-width="8" stroke-linecap="round" opacity=".32"/><g fill="${accent}" opacity=".65"><path d="M580 256l12 30 30 12-30 12-12 30-12-30-30-12 30-12z"/><path d="M206 690l8 20 20 8-20 8-8 20-8-20-20-8 20-8z"/></g></svg>`;
-  await sharp(Buffer.from(svg)).png().toFile(outputPath);
+  await svgToPngFile(svg, outputPath);
 }
 
 async function synthesizeNarration(

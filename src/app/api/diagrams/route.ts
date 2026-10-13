@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import sharp from "sharp";
+import { svgToPngBuffer, ImageProcessingUnavailableError } from "@/lib/image-processing";
 import {
   DIAGRAM_PRESETS,
   DIAGRAM_SKINS,
@@ -58,7 +58,15 @@ export async function POST(req: Request) {
   const doctor = verifyDiagramDoctor(skinId, preset);
 
   if (body.format === "png") {
-    const pngBuffer = await sharp(Buffer.from(svg, "utf8")).png().toBuffer();
+    let pngBuffer: Buffer;
+    try {
+      pngBuffer = await svgToPngBuffer(svg);
+    } catch (error) {
+      if (error instanceof ImageProcessingUnavailableError) {
+        return NextResponse.json({ error: error.message, code: error.code, svg }, { status: 503 });
+      }
+      throw error;
+    }
     return new NextResponse(new Uint8Array(pngBuffer), {
       headers: {
         "Content-Type": "image/png",

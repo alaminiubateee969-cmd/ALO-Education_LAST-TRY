@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
-import sharp from "sharp";
+import { svgToPngFile } from "@/lib/image-processing";
 
 export type LocalChatResult = { content: string; model: string };
 
@@ -474,8 +474,7 @@ async function renderBuiltInEditorialPng(
     </g>
   </svg>`;
 
-  await mkdir(path.dirname(outputPath), { recursive: true });
-  await sharp(Buffer.from(svg)).png().toFile(outputPath);
+  await svgToPngFile(svg, outputPath);
 }
 
 export async function generateComfyUiImage(
