@@ -1,10 +1,14 @@
 name: CI
 
+# Verified-PR gate: every pull request into main must pass this workflow.
+# The stack is Node 22 + npm (package-lock.json is the canonical lockfile —
+# verified VPS uses npm 10.9.9; Bun is not used in CI or production).
 on:
-  push:
-    branches: [main]
   pull_request:
     branches: [main]
+  push:
+    branches: [main]
+  workflow_call:
 
 permissions:
   contents: read
@@ -15,6 +19,7 @@ concurrency:
 
 jobs:
   validate:
+    name: validate
     runs-on: ubuntu-22.04
     timeout-minutes: 30
     steps:
@@ -25,29 +30,27 @@ jobs:
         uses: actions/setup-node@v5
         with:
           node-version: '22'
-
-      - name: Set up Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: 1.3.4
+          cache: npm
 
       - name: Install locked dependencies
-        run: bun install --frozen-lockfile
+        run: npm ci
 
       - name: Lint
-        run: bun run lint
+        run: npm run lint
 
       - name: Typecheck
-        run: bun run typecheck
+        run: npm run typecheck
 
       - name: Validate Prisma schema and generate client
         env:
           DATABASE_URL: mysql://user:placeholder@127.0.0.1:3306/db_learn
         run: |
-          bunx prisma validate
-          bunx prisma generate
+          npx prisma validate
+          npx prisma generate
 
-      - name: Build
+      - name: Build (Next.js standalone)
         env:
           DATABASE_URL: mysql://user:placeholder@127.0.0.1:3306/db_learn
-        run: bun run build
+        run: |
+          npm run build
+          test -f .next/standalone/server.js

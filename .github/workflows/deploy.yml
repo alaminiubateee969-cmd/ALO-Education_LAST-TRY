@@ -1,21 +1,100 @@
-name: Production deployment (gated)
+name: Deploy to VPS
 
-# The previous push-to-main workflow assumed a machine path, PM2, Bun, and a
-# SQLite backup, and applied `prisma db push` without a reviewed migration or a
-# MySQL backup. Production deployment stays disabled until the actual host,
-# service manager, SSH host key, auth, database migration and rollback plans are
-# independently verified. See DEPLOYMENT.md.
+# Pipeline: feature branch → PR (CI "validate" must pass) → merge to main →
+# this workflow → SSH deploy of the exact merged SHA → live health checks.
+#
+# Triggers ONLY on main (i.e. after a verified PR merge) or manually.
+# Required GitHub configuration (DEPLOYMENT.md §GitHub setup):
+#   Secrets: VPS_HOST, VPS_USER, VPS_SSH_KEY, VPS_SSH_HOST_KEY
+#            (VPS_PORT optional, defaults to 22)
+#   Variables (optional overrides): VPS_APP_DIR, PM2_APP_NAME, APP_PORT, SITE_URL
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
   contents: read
 
+# Never cancel a deploy mid-flight; queue runs one at a time.
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
 jobs:
-  blocked-until-verified:
-    runs-on: ubuntu-latest
+  verify:
+    name: verify
+    uses: ./.github/workflows/ci.yml
+
+  deploy:
+    name: deploy
+    needs: verify
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    environment: production
     steps:
-      - name: Stop before touching production
+      - name: Checkout exact SHA
+        uses: actions/checkout@v5
+
+      - name: Fail closed if deployment secrets are missing
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_SSH_HOST_KEY: ${{ secrets.VPS_SSH_HOST_KEY }}
         run: |
-          echo "::error::Deployment is intentionally blocked. Complete the production readiness checks in DEPLOYMENT.md first."
-          exit 1
+          missing=""
+          [ -n "$VPS_HOST" ]       || missing="$missing VPS_HOST"
+          [ -n "$VPS_USER" ]       || missing="$missing VPS_USER"
+          [ -n "$VPS_SSH_KEY" ]    || missing="$missing VPS_SSH_KEY"
+          [ -n "$VPS_SSH_HOST_KEY" ] || missing="$missing VPS_SSH_HOST_KEY"
+          if [ -n "$missing" ]; then
+            echo "::error::Missing required GitHub secret(s):$missing — see DEPLOYMENT.md §GitHub setup. Refusing to deploy."
+            exit 1
+          fi
+
+      - name: Configure SSH (pinned host key)
+        env:
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_SSH_HOST_KEY: ${{ secrets.VPS_SSH_HOST_KEY }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$VPS_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          # Pinned ED25519 host key — StrictHostKeyChecking stays ON.
+          printf '%s\n' "$VPS_SSH_HOST_KEY" > ~/.ssh/known_hosts
+          chmod 644 ~/.ssh/known_hosts
+
+      - name: Deploy exact SHA to VPS
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_PORT: ${{ secrets.VPS_PORT }}
+          APP_DIR: ${{ vars.VPS_APP_DIR }}
+          PM2_APP_NAME: ${{ vars.PM2_APP_NAME }}
+          APP_PORT: ${{ vars.APP_PORT }}
+        run: |
+          ssh -i ~/.ssh/deploy_key -p "${VPS_PORT:-22}" \
+            -o StrictHostKeyChecking=yes -o IdentitiesOnly=yes \
+            -o ConnectTimeout=20 \
+            "$VPS_USER@$VPS_HOST" \
+            "EXPECTED_SHA='${{ github.sha }}' APP_DIR='${APP_DIR:-/home/aloedu/projects/learn-aloeducation}' PM2_APP_NAME='${PM2_APP_NAME:-learn-aloeducation}' APP_PORT='${APP_PORT:-3017}' bash -s" \
+            < scripts/deploy-production.sh
+
+      - name: Verify live site (public, via Nginx/HTTPS)
+        env:
+          SITE_URL: ${{ vars.SITE_URL }}
+        run: |
+          base="${SITE_URL:-https://learn.aloeducation.com}"
+          base="${base%/}"
+          echo "Checking $base ..."
+          for i in $(seq 1 10); do
+            code="$(curl -s -o /dev/null -w '%{http_code}' "$base/api/health" || true)"
+            [ "$code" = "200" ] && break
+            echo "attempt $i: /api/health -> $code, retrying in 6s"; sleep 6
+          done
+          [ "$code" = "200" ] || { echo "::error::Public health check failed: $base/api/health -> $code"; exit 1; }
+          root_code="$(curl -s -o /dev/null -w '%{http_code}' "$base/")"
+          echo "GET $base/ -> $root_code (200, or 3xx to /login when auth is enforced, are healthy)"
+          case "$root_code" in 200|301|302|307|308) : ;; *) echo "::error::Unexpected root status $root_code"; exit 1 ;; esac
+          echo " LIVE VERIFIED: $base at ${{ github.sha }}"

@@ -1,3 +1,6 @@
+# DEPRECATED — the verified VPS reverse proxy is Nginx (ports 80/443), not
+# Caddy. Kept for reference only; the live config is
+# deploy/nginx/learn-aloeducation.conf. Do not install this on the VPS.
 learn.aloeducation.com {
     reverse_proxy 127.0.0.1:3017
     encode gzip
