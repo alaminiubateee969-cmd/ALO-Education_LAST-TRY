@@ -1,0 +1,60 @@
+// ALO Learning Journey — minimum-privilege tailnet policy for GitHub Actions deploys
+// File: deploy/tailscale/acl.hujson  (HuJSON — JSON with comments; the Tailscale
+// admin console accepts this syntax in Settings → Access controls.)
+//
+// PURPOSE: allow GitHub Actions ephemeral runners to reach ONLY tcp/22 (SSH)
+// on the ALO Ubuntu server (100.85.239.114) and nothing else on the tailnet.
+//
+// ⚠ MERGE, DON'T REPLACE: if your tailnet already has ACLs/grants (other
+// machines, users, apps), merge these blocks into the existing policy. Replacing
+// the whole policy with this file will cut off everything else.
+//
+// PREREQUISITE TAGS (Settings → Access controls → tagOwners):
+//   - The OAuth client used by CI is created WITH the tag tag:github-runner.
+//   - The ALO server is tagged tag:alo-hosting (in admin console: pick the
+//     100.85.239.114 node → Edit ACL tags → tag:alo-hosting).
+//     Tagging the server lets this policy address "the ALO host" without
+//     hardcoding IPs and keeps the grant minimal.
+//
+// All tags must appear in tagOwners or the policy will not save.
+
+{
+  "tagOwners": {
+    // Admins manage both tags. The CI OAuth client is issued tag:github-runner
+    // (and ONLY that tag) when it is created — see deploy/tailscale/README.md.
+    "tag:github-runner": ["autogroup:admin"],
+    "tag:alo-hosting":   ["autogroup:admin"],
+  },
+
+  // Convenience alias — optional; lets the grant read clearly.
+  "hosts": {
+    "alo-learning-server": "100.85.239.114",
+  },
+
+  "grants": [
+    {
+      // MINIMUM PRIVILEGE: from CI runners, to the ALO server, port 22 only.
+      // No other port, no other destination, no other source.
+      "src": ["tag:github-runner"],
+      "dst": ["tag:alo-hosting"],
+      "ip":  ["22"],
+    },
+  ],
+
+  // ── OPTIONAL: Tailscale SSH (server-side) ─────────────────────────────────
+  // RECOMMENDATION: leave this commented OUT and keep plain OpenSSH (sshd)
+  // on port 22 with UFW 'allow in on tailscale0 to any port 22'. That preserves
+  // the pinned OpenSSH host key (VPS_SSH_HOST_KEY) used for strict host-key
+  // verification in CI. If you instead enable `tailscale up --ssh` on the
+  // server, Tailscale SSH answers port 22 for tailnet peers with its own host
+  // keys and the pinned-key workflow will (correctly) refuse the connection.
+  //
+  // "ssh": [
+  //   {
+  //     "action": "accept",        // CI cannot answer interactive checks
+  //     "src":    ["tag:github-runner"],
+  //     "dst":    ["tag:alo-hosting"],
+  //     "users":  ["aloedu"],      // deploy user only
+  //   },
+  // ],
+}
