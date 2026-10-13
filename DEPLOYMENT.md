@@ -1,76 +1,186 @@
 # ALO Learning Journey — Deployment and Verification
 
-> **Current status: BLOCKED — NOT PRODUCTION VERIFIED.** This is a repository-side review, not a claim about the Ubuntu host. No SSH connection, production database, reverse proxy, DNS, certificate, or live application was verified. Do not run the existing automatic deployment workflow until the blockers below are addressed.
+> **Pipeline status: IMPLEMENTED — live deployment NOT YET VERIFIED.**
+> The workflows and deploy script in this repository implement
+> `feature branch → PR (CI must pass) → main → automatic VPS deploy → live check`.
+> A live site can only be claimed after (1) the GitHub secrets/variables and
+> branch protection in §GitHub setup are configured, (2) the one-time VPS
+> setup in §One-time VPS setup is done, and (3) a merged PR's deploy run is
+> green including the final public health check. Nothing in this file claims
+> an SSH session, database, or live site has been verified from here.
 
-## Repository facts
+## Verified VPS configuration (operator-supplied)
 
-- Framework: `next` declares `^16.1.1` with standalone output; the current Arena worktree resolves Next.js 16.4.0.
-- Package manager: Bun (`bun.lock` is the only lockfile). The requested runtime target is Node 22; `package.json` now declares Node 22 and starts the standalone server with `node`. The actual server runtime remains unverified.
-- ORM/database: Prisma 6.11.x, MySQL provider. The schema includes a company-scoped admissions CRM/quotation delta and an admin OTP challenge table. Checked-in migrations add the CRM tables and OTP challenge table, but the legacy schema still has no reviewed baseline migration.
-- Intended application endpoint: `127.0.0.1:3017` (repository config only; live listener is unverified).
-- `Caddyfile` is a repository config example for `learn.aloeducation.com` → `127.0.0.1:3017`; it does not prove Caddy is installed or configured on the production host. No live Nginx/Caddy configuration was inspected.
-- No production `.env` is present in this checkout. `.env.example` is not a production configuration and contains no real credentials.
+| Component | Verified configuration |
+|---|---|
+| Application (PM2 name) | `learn-aloeducation` |
+| Project directory | `/home/aloedu/projects/learn-aloeducation` |
+| Runtime | Node.js `22.23.3` |
+| Package manager | npm `10.9.9` (`package-lock.json` is the canonical lockfile) |
+| Process manager | PM2 `7.0.4` (`ecosystem.config.js`) |
+| Application port | `3017` (Next.js standalone, `127.0.0.1`) |
+| Reverse proxy | Nginx, ports 80/443 (`deploy/nginx/learn-aloeducation.conf`) |
+| Database | MySQL, running locally on the VPS |
+| Redis | Running locally on the VPS (app has no hard Redis dependency) |
+| Public site | `https://learn.aloeducation.com` (override with `SITE_URL` variable) |
 
-## Production blockers
+Repository facts reconciled to the table above: Next.js `^16.1.1` with
+`output: "standalone"`; Prisma 6 with MySQL provider and checked-in migrations
+(including an `IF NOT EXISTS` baseline); `/api/health` is the low-detail
+public readiness probe used by both deploy gates.
 
-1. **Authentication is implemented but not production-verified.** A single-admin NextAuth Credentials flow uses a scrypt password hash, a required production SMS one-time code, and a signed JWT session; middleware protects application pages and API routes in production (except `/login`, `/api/auth/*`, and low-detail `/api/health`). Configure `NEXTAUTH_SECRET`, `ADMIN_EMAIL`, `ADMIN_PASSWORD_HASH`, `ADMIN_OTP_PHONE`, `HTTPSMS_API_KEY`, and `HTTPSMS_FROM`. The httpSMS-compatible API's accepted response means queued, not delivered; actual SMS, handset, and proxy/cookie behavior have not been tested. OTP codes are five-minute, single-use challenges with a three-send/hour and five-attempt limit; there is still no general login/API rate limit, RBAC, or multi-user identity model. Complete end-to-end login and protected-route tests before exposure.
-2. **Database change strategy is not production-safe yet.** The checked-in migrations add CRM tables and an OTP challenge table; they do not establish a baseline for the existing 27 legacy models/tables. Do not run `prisma db push`, `prisma migrate reset`, or `prisma migrate deploy` against production until the actual MySQL schema is inspected and backed up, a baseline plan is reviewed, and all deltas have been validated against that schema.
-3. **The workflow on the audited `main` commit is not safe to run.** At SHA `03361c5f6bf19727907452ed0edc5247948b9466`, `.github/workflows/deploy.yml` auto-triggered on `main`, assumed Bun and PM2, defaulted to the unverified path `/root/alo-github-verify`, had no verified SSH host-key pin, only implemented a SQLite backup path (not a MySQL backup), ran `prisma db push`, did not reliably pass the workflow commit SHA to the remote shell, and contained `|| true` failure suppression. This working branch replaces that workflow with a manual fail-closed gate; **it does not deploy**. Merge only after reviewing the gate and completing the actual host, authentication, migration, and rollback audit.
-4. **Host details and server state are unknown.** The actual host/IP, SSH port/user, application user/path, Ubuntu version, Node/MySQL/Redis versions, process manager, listeners, firewall, and deployed SHA have not been inspected. Values in old repository docs/config are not verified and must not be reused.
-5. **External integrations are not production-verified.** AI/media generation uses only private local Ollama/ComfyUI endpoints, local Piper/eSpeak, FFmpeg, and a built-in procedural instrumental generator; no paid AI API is configured. Model installation and media runtime are not verified. See `LOCAL_AI.md`. Administrator OTP can call an operator-configured HTTPSMS-compatible HTTP gateway; no SMS has been sent here and the gateway's accepted response is not proof of handset delivery. Email marketing remains draft-only: no SMTP/Resend sender, consent ledger, unsubscribe endpoint, or delivery integration is configured. Redis and n8n are not application adapters and must not be reported healthy based on environment-variable names alone.
-6. **Upload storage is not configurable.** `src/app/api/family-studio/route.ts` writes under `process.cwd()/storage/uploads/family`; it does not use `UPLOAD_DIR`. Asset deletion now constrains stored paths to that directory, but upload size/MIME validation, retention, backup, and the production storage path still need review before accepting real uploads.
-7. **Repository history contains public business data.** The GitHub repository is public. Commit `e95b39b` contains `storage/backups/backup_1786236820070.alo.bak`, a 266,240-byte XOR-obfuscated SQLite snapshot. It decodes to 15 tables and 383 rows. The file was removed from the current tree but remains reachable in Git history. No high-confidence credential pattern was found in the targeted scan; that does not undo the business-data exposure. See `SECURITY.md` and `audit/05-EXPOSURE-REMEDIATION.md`.
-8. **Production runtime and database are not verified.** Bun is not installed in this Arena environment. `npm install --package-lock=false` was used for checks; this is not a frozen install from `bun.lock`. Typecheck, ESLint, and the Next.js production build pass. Prisma schema validation passed using the bundled JS/WASM schema-engine path; the client was generated in `engine=none` mode only to compile without the Prisma binary-download host. The build did not query MySQL or exercise that runtime client. No test suite or live database/SMS/media integration was available. Repeat the project-lockfile install, standard Prisma generation with its runtime engine, production build, and end-to-end checks in a supported environment. Next.js 16.4.0 still warns that the `middleware` convention is deprecated; migration to `proxy` remains unverified. The latest GitHub `Deploy to VPS` run (2026-09-30, SHA `03361c5f6bf19727907452ed0edc5247948b9466`) failed; its log could not be retrieved, so the precise failure is unknown. No successful deployment or deployed SHA was established.
+## The pipeline
 
-## Safe repository checks
-
-Use the project's lockfile/package manager; do not substitute `npm ci` (there is no `package-lock.json`). On a machine with Bun 1.3+ and Node 22 installed:
-
-```bash
-bun install --frozen-lockfile
-bun run lint
-bun run typecheck
-DATABASE_URL='mysql://user:placeholder@127.0.0.1:3306/db_learn' bunx prisma validate
-DATABASE_URL='mysql://user:placeholder@127.0.0.1:3306/db_learn' bunx prisma generate
-bun run build
+```
+feature branch ──► pull request ──► CI "validate" ──► merge to main
+                                                        │
+                          Deploy to VPS workflow ◄──────┘ (push to main)
+                            1. verify job  = same CI workflow (reusable)
+                            2. deploy job  = SSH (pinned host key) runs
+                               scripts/deploy-production.sh at the exact SHA:
+                               lock → clean-tree check → fetch/checkout SHA
+                               → mysqldump backup → npm ci → prisma generate
+                               → prisma migrate deploy → npm run build
+                               → PM2 startOrReload → 127.0.0.1:3017 health gate
+                               (any failure → code rollback to previous SHA)
+                            3. public check = https://<site>/api/health == 200
 ```
 
-There is currently no test script/test suite configured. A green build alone does not verify database migrations, authentication, external services, or production operation.
+Key files: `.github/workflows/ci.yml`, `.github/workflows/deploy.yml`,
+`scripts/deploy-production.sh`, `ecosystem.config.js`,
+`deploy/nginx/learn-aloeducation.conf`.
 
-For development only, `bun run db:push` is a schema-sync convenience, not a production migration strategy. Never run `bun run db:push`, `bun run db:reset`, or `prisma db push` on production without a reviewed plan, a verified backup, and explicit approval.
+## GitHub setup (one-time, repository admin)
 
-## Host verification required before any deployment
+### Secrets — Settings → Secrets and variables → Actions
 
-Run these on the actual server using its verified access path; do not infer results from this repository:
+| Secret | Value |
+|---|---|
+| `VPS_HOST` | VPS hostname or IP |
+| `VPS_USER` | SSH user that owns the app (expected `aloedu`) |
+| `VPS_PORT` | *(optional)* SSH port, default `22` |
+| `VPS_SSH_KEY` | Private key of a **dedicated deploy keypair** (public half in the VPS user's `~/.ssh/authorized_keys`) |
+| `VPS_SSH_HOST_KEY` | The VPS ED25519 host-key line for `known_hosts`. Get it out-of-band on the VPS: `ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub`, then from a trusted machine `ssh-keyscan -t ed25519 <host>` and confirm the fingerprints match. Never paste private keys or passwords anywhere else. |
+
+### Variables (optional overrides — defaults already match the verified VPS)
+
+`VPS_APP_DIR` (`/home/aloedu/projects/learn-aloeducation`), `PM2_APP_NAME`
+(`learn-aloeducation`), `APP_PORT` (`3017`), `SITE_URL`
+(`https://learn.aloeducation.com`).
+
+### Branch protection — Settings → Branches → rule for `main`
+
+Require a pull request before merging; require status checks
+**`validate`** (from CI) and **`verify`** (from Deploy to VPS) to pass before
+merging; require branches to be up to date; do not allow bypassing. Direct
+pushes to `main` should be impossible — every change arrives via a verified PR.
+
+### Environment
+
+Create an environment named `production` (Settings → Environments). Do **not**
+add required reviewers unless you want a manual approval gate before each
+deploy; the workflow targets automatic deployment after merge.
+
+## One-time VPS setup (as the app user, e.g. `aloedu`)
+
+**Audit finding (2026-10-13, `audit/06-VPS-AUDIT-20261013.md`):** the live
+`/home/aloedu/projects/learn-aloeducation` is an uploaded copy — **not a git
+repository, no `package-lock.json`** — and `learn.aloeducation.com` does not
+resolve in DNS yet. The app itself is healthy (PM2 online, local health 200).
+Convert the directory to a real clone first; never use Bun on this VPS (it
+core-dumps on this CPU — npm is canonical).
 
 ```bash
-cat /etc/os-release
-uname -a
-node -v && npm -v
-mysql --version
-redis-server --version
-nginx -v 2>&1
-sudo systemctl status mysql redis-server nginx --no-pager
-sudo ss -lntp
-sudo ufw status verbose
-systemctl list-units --type=service --state=running
-```
+# Preconditions matching the verified stack
+node -v; npm -v; pm2 -v; mysql --version; redis-cli ping
+curl -fsI https://binaries.prisma.sh >/dev/null && echo "prisma CDN reachable"  # build/generate need this
 
-Identify the actual application service/process manager, application user/path, and reverse proxy before changing them. Do not expose SSH private keys, database passwords, or API keys in chat or Git. Store deployment credentials only in protected GitHub Actions secrets and verify the server ED25519 host fingerprint out-of-band.
+# Convert the existing non-git directory into a clone (keeps the old copy
+# aside for rollback, copies .env + storage/, rebuilds, health-checks;
+# runs NO database migration):
+git clone https://github.com/alaminiubateee969-cmd/ALO-LEARNING-JOURNEY-PRODUCTION.git /tmp/alo-bootstrap
+bash /tmp/alo-bootstrap/scripts/bootstrap-vps.sh
+cd /home/aloedu/projects/learn-aloeducation
 
-## Required post-deployment checks
+# Production env: real values, never committed
+cp .env.example .env && chmod 600 .env   # set DATABASE_URL (local MySQL), NEXTAUTH_*, ADMIN_*, HTTPSMS_*
+npm ci && npx prisma generate
 
-Only after authentication, migrations, backup/rollback, and deployment workflow are made safe, verify from the real host and an independent client:
+# Nginx (reference config in-repo; TLS via your issuer, e.g. certbot)
+sudo cp deploy/nginx/learn-aloeducation.conf /etc/nginx/sites-available/learn-aloeducation
+sudo ln -sfn /etc/nginx/sites-available/learn-aloeducation /etc/nginx/sites-enabled/
+sudo nginx -t && sudo systemctl reload nginx
 
-```bash
-curl -i http://127.0.0.1:3017/
+# First start (subsequent restarts are handled by deploys)
+npm run build
+pm2 start ecosystem.config.js --only learn-aloeducation
+pm2 save && pm2 startup   # follow the printed instruction for boot persistence
 curl -i http://127.0.0.1:3017/api/health
-curl -i https://learn.aloeducation.com/
-curl -i https://learn.aloeducation.com/api/health
-curl -I http://learn.aloeducation.com/
-echo | openssl s_client -connect learn.aloeducation.com:443 \
-  -servername learn.aloeducation.com 2>/dev/null \
-  | openssl x509 -noout -subject -issuer -dates
 ```
 
-Record the workflow SHA and server `git rev-parse HEAD`; they must match. Test real login/session/protected API behavior, database read/write, and every integration that the production application actually depends on. Mark anything not exercised as **NOT VERIFIED**.
+Do not expose SSH private keys, database passwords, or API keys in chat or
+Git. Generate the admin hash on the VPS with
+`read -rsp 'Admin password: ' p && printf '%s' "$p" | node scripts/hash-admin-password.mjs && unset p`.
+
+## DNS / proxy — required for a *confirmed live* website
+
+At audit time `learn.aloeducation.com` did not resolve, Nginx owns 80/443,
+and Caddy is stuck activating with a config for the same domain. Before
+claiming the site is live, decide on **one** proxy and one routing path:
+
+```bash
+getent hosts learn.aloeducation.com          # must return the VPS public IP (or tunnel)
+dig +short learn.aloeducation.com
+sudo nginx -T 2>/dev/null | grep -B2 -A15 'server_name learn.aloeducation.com'
+sudo cat /etc/caddy/Caddyfile                # does another proxy claim the domain?
+cat ~/.cloudflared/config.yml 2>/dev/null    # cloudflared is running — check ingress hostnames
+```
+
+If Nginx is the chosen proxy (matches the verified config), install
+`deploy/nginx/learn-aloeducation.conf` (see one-time setup), obtain TLS for
+the domain, and stop/disable the conflicting Caddy service
+(`sudo systemctl disable --now caddy`) once nothing else needs it — the audit
+shows other names in that Caddyfile, so confirm before disabling. Then set the
+GitHub variable `SITE_URL=https://learn.aloeducation.com`: that turns the
+deploy workflow's public check into a hard gate. Until `SITE_URL` is set, the
+workflow only warns on public-check failure (VPS-side health remains a hard
+gate either way). Note the app currently binds `0.0.0.0:3017`; after the first
+deploy of this repo's `ecosystem.config.js` it must show `127.0.0.1:3017` in
+`ss -lntp`.
+
+## First migration — read before the first automatic deploy
+
+`prisma migrate deploy` is the only migration command deploys run (never
+`db push` / `migrate reset`). The baseline migration uses
+`CREATE TABLE IF NOT EXISTS`, but the CRM/OTP deltas do not. If the live
+database was previously synced with `db push`, its tables exist without a
+`_prisma_migrations` history and `migrate deploy` will fail closed (previous
+code is restored automatically). In that case, baseline it **manually, once,
+after a verified backup**:
+
+```bash
+cd /home/aloedu/projects/learn-aloeducation
+npx prisma migrate status                      # inspect first
+mysqldump ... > pre-baseline-backup.sql        # verified backup (see §Rollback)
+npx prisma migrate resolve --applied 20261001000000_initial_baseline
+# Only mark later migrations applied if their tables/columns verifiably exist:
+npx prisma migrate resolve --applied 20261010000000_admissions_crm_quotes
+npx prisma migrate resolve --applied 20261010000001_admin_otp_challenges
+npx prisma migrate status                      # must be green before deploying
+```
+
+## What every automatic deploy does (scripts/deploy-production.sh)
+
+Lock → verify Node 22/tools → require clean git tree and `.env` → fetch and
+check out the exact merged SHA (refuses anything ≠ `origin/main`) →
+`mysqldump` backup to `.backups/` (0700, gz-verified; **deploy stops if the
+backup fails**) → `npm ci` → `prisma generate` → `prisma migrate deploy` →
+`npm run build` + standalone check → `pm2 startOrReload` → up to 60 s of
+`http://127.0.0.1:3017/api/health` checks. Any post-checkout failure rolls the
+**code** back to the previous SHA, rebuilds, and restarts. The workflow then
+independently verifies the public `SITE_URL/api/health` from GitHub.
+
+## Rollback
+
+- **Automatic:** failed deploys restore the p
+...[truncated 3881 chars]
