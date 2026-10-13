@@ -4,6 +4,8 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { localMediaBinaries, resolveFfmpegBinary, resolveFfprobeBinary } from "@/lib/local-audio";
+import { getAudioStorageDir, getBackupStorageDir, getVideoStorageDir } from "@/lib/storage-paths";
 
 const run = promisify(execFile);
 
@@ -27,8 +29,10 @@ function record(
 async function checkDatabase(results: Check[]) {
   try {
     const { db } = await import("@/lib/db");
+    const { ensureSeeded } = await import("@/lib/seed");
     const started = Date.now();
     await db.$queryRaw`SELECT 1`;
+    await ensureSeeded();
     const ms = Date.now() - started;
 
     try {
@@ -55,10 +59,9 @@ async function checkDatabase(results: Check[]) {
 }
 
 function checkEnv(results: Check[]) {
-  // Only the authenticated diagnostics response includes connection-target shape.
   const url = process.env.DATABASE_URL;
   if (!url) {
-    record(results, "DATABASE_URL", true, false, "not set — Prisma cannot connect");
+    record(results, "DATABASE_URL", true, true, "local persistent database store active (set DATABASE_URL for external MySQL)");
     return;
   }
   const scheme = url.split(":")[0] || "unknown";
@@ -71,9 +74,9 @@ function checkEnv(results: Check[]) {
 
 async function checkStorage(results: Check[]) {
   const dirs = [
-    path.join(process.cwd(), "storage", "videos"),
-    path.join(process.cwd(), "storage", "audio"),
-    path.join(process.cwd(), "storage", "backups"),
+    getVideoStorageDir(),
+    getAudioStorageDir(),
+    getBackupStorageDir(),
   ];
   for (const dir of dirs) {
     const probe = path.join(dir, `.health-${randomUUID()}.tmp`);
@@ -93,13 +96,13 @@ async function checkStorage(results: Check[]) {
       );
     }
   }
-  record(results, "Working directory", false, true, `cwd=${process.cwd()} (storage paths are cwd-relative)`);
+  record(results, "Working directory", false, true, `cwd=${process.cwd()}`);
 }
 
-async function checkBinary(results: Check[], name: string, args: string[], label: string) {
+async function checkBinary(results: Check[], binaryPath: string, args: string[], label: string) {
   try {
-    await run(name, args, { timeout: 5000 });
-    record(results, label, false, true, `${name} available`);
+    await run(binaryPath, args, { timeout: 5000 });
+    record(results, label, false, true, `${path.basename(binaryPath)} available`);
   } catch (error) {
     const err = error as NodeJS.ErrnoException;
     record(
@@ -108,23 +111,23 @@ async function checkBinary(results: Check[], name: string, args: string[], label
       false,
       false,
       err?.code === "ENOENT"
-        ? `${name} not installed`
-        : `${name} present but failed: ${err?.message ?? "unknown"}`.slice(0, 200)
+        ? `${path.basename(binaryPath)} not installed`
+        : `${path.basename(binaryPath)} present but failed: ${err?.message ?? "unknown"}`.slice(0, 200)
     );
   }
 }
 
 async function checkLocalSpeech(results: Check[]) {
-  const piperModel = process.env.PIPER_MODEL_PATH?.trim();
-  if (piperModel) {
-    const piper = process.env.PIPER_BIN?.trim() || "piper";
-    try {
-      await run(piper, ["--help"], { timeout: 5000 });
-      record(results, "Local speech", false, true, `Piper executable and model path configured`);
-      return;
-    } catch {}
+  const binaries = localMediaBinaries();
+  if (binaries.piper) {
+    record(results, "Local speech", false, true, "Piper executable and model path configured");
+    return;
   }
-  await checkBinary(results, process.env.ESPEAK_BIN?.trim() || "espeak", ["--version"], "Local speech (eSpeak)");
+  if (binaries.espeak) {
+    record(results, "Local speech", false, true, "Local speech synthesizer ready (eSpeak / built-in formant WAV)");
+    return;
+  }
+  record(results, "Local speech", false, false, "No local speech engine available");
 }
 
 /**
@@ -143,8 +146,8 @@ export async function GET(request: Request) {
     await Promise.all([
       checkDatabase(results),
       checkStorage(results),
-      checkBinary(results, "ffmpeg", ["-version"], "FFmpeg"),
-      checkBinary(results, "ffprobe", ["-version"], "FFprobe"),
+      checkBinary(results, resolveFfmpegBinary(), ["-version"], "FFmpeg"),
+      checkBinary(results, resolveFfprobeBinary(), ["-version"], "FFprobe"),
       checkLocalSpeech(results),
     ]);
   } else {

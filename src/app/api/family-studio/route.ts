@@ -3,8 +3,9 @@ import { db } from "@/lib/db";
 import { ensureSeeded } from "@/lib/seed";
 import { promises as fs } from "fs";
 import path from "path";
+import { getFamilyUploadDir } from "@/lib/storage-paths";
 
-const UPLOAD_DIR = path.join(process.cwd(), "storage", "uploads", "family");
+const UPLOAD_DIR = getFamilyUploadDir();
 
 function resolveFamilyAssetPath(filePath: string): string | null {
   const match = /^\/storage\/uploads\/family\/([a-zA-Z0-9_-]{1,128})\/([a-zA-Z0-9_.-]{1,180})$/.exec(filePath);
@@ -207,6 +208,7 @@ export async function POST(req: Request) {
         castProfileIds: JSON.stringify(castProfileIds),
         status: "draft",
         currentStage: "creative_director",
+        profiles: castProfileIds.length > 0 ? { connect: castProfileIds.map((id: string) => ({ id })) } : undefined,
       },
       include: { profiles: true },
     });

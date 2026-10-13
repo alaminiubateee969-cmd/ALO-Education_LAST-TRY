@@ -6,22 +6,24 @@ import path from "node:path";
 import sharp from "sharp";
 import { executeAsAgent, recordAgentPipelineStages } from "@/lib/agent-runtime";
 import { generateImageFile, generateNarrationScript, type QualityAgentPass } from "@/lib/ai";
-import { generateProceduralInstrumental, synthesizeLocalSpeech, type MusicMood } from "@/lib/local-audio";
+import { generateProceduralInstrumental, resolveFfmpegBinary, resolveFfprobeBinary, synthesizeLocalSpeech, type MusicMood } from "@/lib/local-audio";
+import { getSceneAssetStorageDir, getVideoStorageDir } from "@/lib/storage-paths";
 import { ensureSeeded } from "@/lib/seed";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const VIDEO_DIR = path.join(process.cwd(), "storage", "videos");
-const ASSET_DIR = path.join(process.cwd(), "storage", "scene-assets");
+const VIDEO_DIR = getVideoStorageDir();
+const ASSET_DIR = getSceneAssetStorageDir();
 const MOODS = new Set<MusicMood>(["calm", "hopeful", "playful", "reflective"]);
 
 type Segment = { text: string; start: number; end: number };
 type SceneGroup = { segments: Segment[]; start: number; end: number; duration: number; visualPrompt: string; assetPath: string; imageGenerated: boolean };
 
 function runTool(binary: string, args: string[], timeoutMs = 300_000): string {
+  const resolved = binary === "ffmpeg" ? resolveFfmpegBinary() : binary === "ffprobe" ? resolveFfprobeBinary() : binary;
   try {
-    return execFileSync(binary, args, { timeout: timeoutMs, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], maxBuffer: 8 * 1024 * 1024 }).trim();
+    return execFileSync(resolved, args, { timeout: timeoutMs, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], maxBuffer: 8 * 1024 * 1024 }).trim();
   } catch (error) {
     const issue = error as NodeJS.ErrnoException & { stderr?: Buffer | string };
     throw new Error(`${binary} failed: ${String(issue.stderr || issue.message || "unknown error").slice(0, 300)}`);
@@ -253,6 +255,9 @@ export async function POST(request: Request) {
 
         const sceneData = groups.map((group, index) => ({
           sceneId: index + 1,
+          index,
+          caption: group.segments.map((segment) => segment.text).join(" "),
+          source: group.imageGenerated ? "local-ai-agent-illustration" : "local-editorial-still",
           start: Math.round(group.start * 10) / 10,
           end: Math.round(group.end * 10) / 10,
           duration: Math.round(group.duration * 10) / 10,

@@ -5,18 +5,20 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { executeAsAgent, recordAgentPipelineStages } from "@/lib/agent-runtime";
 import { generateNarrationScript, type QualityAgentPass } from "@/lib/ai";
-import { generateProceduralInstrumental, synthesizeLocalSpeech, type MusicMood } from "@/lib/local-audio";
+import { generateProceduralInstrumental, resolveFfmpegBinary, resolveFfprobeBinary, synthesizeLocalSpeech, type MusicMood } from "@/lib/local-audio";
+import { getVideoStorageDir } from "@/lib/storage-paths";
 import { ensureSeeded } from "@/lib/seed";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const VIDEO_DIR = path.join(process.cwd(), "storage", "videos");
+const VIDEO_DIR = getVideoStorageDir();
 const MOODS = new Set<MusicMood>(["calm", "hopeful", "playful", "reflective"]);
 
 function runTool(binary: string, args: string[], timeoutMs = 300_000): string {
+  const resolved = binary === "ffmpeg" ? resolveFfmpegBinary() : binary === "ffprobe" ? resolveFfprobeBinary() : binary;
   try {
-    return execFileSync(binary, args, {
+    return execFileSync(resolved, args, {
       timeout: timeoutMs,
       encoding: "utf8",
       stdio: ["ignore", "pipe", "pipe"],

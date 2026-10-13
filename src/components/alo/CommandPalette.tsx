@@ -41,6 +41,7 @@ export default function CommandPalette({
     { id: "nav-topics", label: "Topic Ideas", bn: "আইডিয়া", group: "Navigate", icon: "💡", action: () => onNavigate("topics") },
     { id: "nav-studio", label: "Content Studio", bn: "স্টুডিও", group: "Navigate", icon: "✨", action: () => onNavigate("studio") },
     { id: "nav-media-audio", label: "Voice & Music Studio", bn: "ভয়েস ও গান", group: "Navigate", icon: "🎵", action: () => onNavigate("music") },
+    { id: "nav-diagrams", label: "Diagram & Button Studio", bn: "ডায়াগ্রাম ও বাটন", group: "Navigate", icon: "📐", keywords: "diagram svg architecture button design archify mermaid", action: () => onNavigate("diagrams") },
     { id: "nav-video", label: "Video Pipeline", bn: "ভিডিও", group: "Navigate", icon: "🎬", action: () => onNavigate("video") },
     { id: "nav-approval", label: "Approval Queue", bn: "অনুমোদন", group: "Navigate", icon: "📋", action: () => onNavigate("approval") },
     { id: "nav-rag", label: "RAG Knowledge", bn: "জ্ঞান", group: "Navigate", icon: "📚", action: () => onNavigate("rag") },

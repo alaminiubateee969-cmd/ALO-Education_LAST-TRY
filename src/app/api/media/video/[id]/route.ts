@@ -3,12 +3,13 @@ import { createReadStream } from "node:fs";
 import { stat } from "node:fs/promises";
 import { Readable } from "node:stream";
 import path from "node:path";
+import { getVideoStorageDir } from "@/lib/storage-paths";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 type RouteContext = { params: Promise<{ id: string }> };
-const VIDEO_DIR = path.join(process.cwd(), "storage", "videos");
+const VIDEO_DIR = getVideoStorageDir();
 
 export async function GET(request: Request, context: RouteContext) {
   const { id } = await context.params;
