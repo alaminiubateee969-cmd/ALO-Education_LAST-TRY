@@ -17,6 +17,7 @@ jobs:
   validate:
     runs-on: ubuntu-22.04
     timeout-minutes: 30
+
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -25,29 +26,25 @@ jobs:
         uses: actions/setup-node@v5
         with:
           node-version: '22'
+          cache: npm
 
-      - name: Set up Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: 1.3.4
+      - name: Install dependencies
+        run: npm ci
 
-      - name: Install locked dependencies
-        run: bun install --frozen-lockfile
-
-      - name: Lint
-        run: bun run lint
-
-      - name: Typecheck
-        run: bun run typecheck
-
-      - name: Validate Prisma schema and generate client
+      - name: Validate Prisma and generate client
         env:
           DATABASE_URL: mysql://user:placeholder@127.0.0.1:3306/db_learn
         run: |
-          bunx prisma validate
-          bunx prisma generate
+          npx prisma validate
+          npx prisma generate
 
-      - name: Build
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Production build
         env:
           DATABASE_URL: mysql://user:placeholder@127.0.0.1:3306/db_learn
-        run: bun run build
+        run: npm run build
