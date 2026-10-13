@@ -187,6 +187,25 @@ export const openApiSpec = {
       parameters: [{ name: "id", in: "path", required: true, schema: { type: "string", pattern: "^cine_" } }],
       get: { tags: ["Media"], summary: "Download cinematic video SRT captions", responses: { "200": { description: "SubRip captions", content: { "application/x-subrip": { schema: { type: "string" } } } }, "404": { description: "Subtitle file not found" } } },
     },
+    "/api/diagrams": {
+      get: {
+        tags: ["Media", "System"],
+        summary: "List 45 visual diagram types, 5 WCAG skins, and render an orthogonal Editorial SVG schematic",
+        responses: { "200": { description: "Diagram SVG, WCAG contrast doctor, and 45-type catalog" } },
+      },
+      post: {
+        tags: ["Media", "System"],
+        summary: "Render an orthogonal Editorial SVG/HTML/PNG schematic or redraw Mermaid syntax",
+        responses: { "200": { description: "Rendered SVG, self-contained HTML, or PNG binary" } },
+      },
+    },
+    "/api/marketing/humanize": {
+      post: {
+        tags: ["Local AI"],
+        summary: "Detect and rewrite structural AI writing patterns (Humanizer §1–§19) while preserving merge tags",
+        responses: { "200": { description: "Humanized text, detected patterns, and before/after scores" } },
+      },
+    },
     "/api/openapi.json": {
       get: {
         tags: ["System"],

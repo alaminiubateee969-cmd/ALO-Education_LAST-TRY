@@ -46,6 +46,9 @@ storage/backups/
 storage/videos/
 storage/scene-assets/
 storage/audio/
+storage/uploads/
+storage/local-db.json
+storage/.backup-key
 public/generated/
 
 # Next.js / TypeScript build byproducts (both appeared as untracked after a build)

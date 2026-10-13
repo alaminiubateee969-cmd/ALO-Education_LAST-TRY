@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import {
   LayoutDashboard, Brain, Sparkles, ClipboardCheck, BookOpen,
-  Send, BarChart3, Terminal, Users, Settings, Menu, Heart, ShieldCheck, Bell, MessageSquare, Lightbulb, GraduationCap, History, Database, Search, Command, Video, DollarSign, Calendar, Workflow, RefreshCw, Phone, TrendingUp, Mail, Megaphone, Code2, LogOut, Music2,
+  Send, BarChart3, Terminal, Users, Settings, Menu, Heart, ShieldCheck, Bell, MessageSquare, Lightbulb, GraduationCap, History, Database, Search, Command, Video, DollarSign, Calendar, Workflow, RefreshCw, Phone, TrendingUp, Mail, Megaphone, Code2, LogOut, Music2, Layers,
 } from "lucide-react";
 import Dashboard from "@/components/alo/Dashboard";
 import AgentsView from "@/components/alo/AgentsView";
@@ -47,12 +47,13 @@ import AdmissionsCRMView from "@/components/alo/AdmissionsCRMView";
 import MarketingKitsView from "@/components/alo/MarketingKitsView";
 import ApiReferenceView from "@/components/alo/ApiReferenceView";
 import AudioStudioView from "@/components/alo/AudioStudioView";
+import DiagramStudioView from "@/components/alo/DiagramStudioView";
 import { signOut } from "next-auth/react";
 
 type Section =
   | "dashboard" | "agents" | "loop" | "growth" | "command" | "seo" | "inkbox" | "topics" | "studio" | "approval" | "rag" | "crm"
   | "social" | "analytics" | "comments" | "telegram" | "family" | "family-studio" | "marketing-kits"
-  | "history" | "video" | "music" | "calendar" | "workflow" | "communications" | "learning" | "backups" | "publishing" | "costs" | "api-reference" | "settings";
+  | "history" | "video" | "music" | "diagrams" | "calendar" | "workflow" | "communications" | "learning" | "backups" | "publishing" | "costs" | "api-reference" | "settings";
 
 const NAV: { id: Section; label: string; bn: string; icon: React.ReactNode; group: string }[] = [
   { id: "dashboard", label: "Dashboard", bn: "ড্যাশবোর্ড", icon: <LayoutDashboard className="h-4 w-4" />, group: "Overview" },
@@ -80,6 +81,7 @@ const NAV: { id: Section; label: string; bn: string; icon: React.ReactNode; grou
   { id: "family", label: "Family Models", bn: "ক্যারেক্টার", icon: <Users className="h-4 w-4" />, group: "Media" },
   { id: "video", label: "Video Pipeline", bn: "ভিডিও", icon: <Video className="h-4 w-4" />, group: "Media" },
   { id: "music", label: "Voice & Music", bn: "ভয়েস ও গান", icon: <Music2 className="h-4 w-4" />, group: "Media" },
+  { id: "diagrams", label: "Diagram & UI Studio", bn: "ডায়াগ্রাম ও বাটন", icon: <Layers className="h-4 w-4" />, group: "Media" },
   { id: "family-studio", label: "Family Studio", bn: "ফ্যামিলি", icon: <Heart className="h-4 w-4" />, group: "Media" },
   { id: "learning", label: "Self-Learning", bn: "শেখা", icon: <GraduationCap className="h-4 w-4" />, group: "System" },
   { id: "costs", label: "Cost & Usage", bn: "খরচ", icon: <DollarSign className="h-4 w-4" />, group: "System" },
@@ -272,6 +274,7 @@ export default function Home() {
             {section === "family" && <FamilyView />}
             {section === "video" && <VideoPipelineView />}
             {section === "music" && <AudioStudioView />}
+            {section === "diagrams" && <DiagramStudioView />}
             {section === "family-studio" && <FamilyStudioView />}
             {section === "learning" && <LearningView />}
             {section === "backups" && <BackupsView />}
