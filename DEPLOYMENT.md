@@ -83,15 +83,23 @@ deploy; the workflow targets automatic deployment after merge.
 
 ## One-time VPS setup (as the app user, e.g. `aloedu`)
 
+**Audit finding (2026-10-13, `audit/06-VPS-AUDIT-20261013.md`):** the live
+`/home/aloedu/projects/learn-aloeducation` is an uploaded copy — **not a git
+repository, no `package-lock.json`** — and `learn.aloeducation.com` does not
+resolve in DNS yet. The app itself is healthy (PM2 online, local health 200).
+Convert the directory to a real clone first; never use Bun on this VPS (it
+core-dumps on this CPU — npm is canonical).
+
 ```bash
 # Preconditions matching the verified stack
 node -v; npm -v; pm2 -v; mysql --version; redis-cli ping
 curl -fsI https://binaries.prisma.sh >/dev/null && echo "prisma CDN reachable"  # build/generate need this
 
-# Clone into the verified project directory (leave any existing dirs untouched)
-mkdir -p /home/aloedu/projects
-git clone https://github.com/alaminiubateee969-cmd/ALO-LEARNING-JOURNEY-PRODUCTION.git \
-  /home/aloedu/projects/learn-aloeducation
+# Convert the existing non-git directory into a clone (keeps the old copy
+# aside for rollback, copies .env + storage/, rebuilds, health-checks;
+# runs NO database migration):
+git clone https://github.com/alaminiubateee969-cmd/ALO-LEARNING-JOURNEY-PRODUCTION.git /tmp/alo-bootstrap
+bash /tmp/alo-bootstrap/scripts/bootstrap-vps.sh
 cd /home/aloedu/projects/learn-aloeducation
 
 # Production env: real values, never committed
@@ -113,6 +121,32 @@ curl -i http://127.0.0.1:3017/api/health
 Do not expose SSH private keys, database passwords, or API keys in chat or
 Git. Generate the admin hash on the VPS with
 `read -rsp 'Admin password: ' p && printf '%s' "$p" | node scripts/hash-admin-password.mjs && unset p`.
+
+## DNS / proxy — required for a *confirmed live* website
+
+At audit time `learn.aloeducation.com` did not resolve, Nginx owns 80/443,
+and Caddy is stuck activating with a config for the same domain. Before
+claiming the site is live, decide on **one** proxy and one routing path:
+
+```bash
+getent hosts learn.aloeducation.com          # must return the VPS public IP (or tunnel)
+dig +short learn.aloeducation.com
+sudo nginx -T 2>/dev/null | grep -B2 -A15 'server_name learn.aloeducation.com'
+sudo cat /etc/caddy/Caddyfile                # does another proxy claim the domain?
+cat ~/.cloudflared/config.yml 2>/dev/null    # cloudflared is running — check ingress hostnames
+```
+
+If Nginx is the chosen proxy (matches the verified config), install
+`deploy/nginx/learn-aloeducation.conf` (see one-time setup), obtain TLS for
+the domain, and stop/disable the conflicting Caddy service
+(`sudo systemctl disable --now caddy`) once nothing else needs it — the audit
+shows other names in that Caddyfile, so confirm before disabling. Then set the
+GitHub variable `SITE_URL=https://learn.aloeducation.com`: that turns the
+deploy workflow's public check into a hard gate. Until `SITE_URL` is set, the
+workflow only warns on public-check failure (VPS-side health remains a hard
+gate either way). Note the app currently binds `0.0.0.0:3017`; after the first
+deploy of this repo's `ecosystem.config.js` it must show `127.0.0.1:3017` in
+`ss -lntp`.
 
 ## First migration — read before the first automatic deploy
 
