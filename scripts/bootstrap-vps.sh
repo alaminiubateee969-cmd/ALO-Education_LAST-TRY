@@ -70,12 +70,16 @@ git clone "$REPO_URL" "$APP_DIR"
 cd "$APP_DIR"
 log "checked out $(git rev-parse HEAD) on $(git rev-parse --abbrev-ref HEAD)"
 
-log "copying .env and storage/ from the previous copy"
-cp "$BACKUP_DIR/.env" .env && chmod 600 .env
+log "copying .env and storage/ into the shared/ layout used by atomic deploys"
+# New layout: APP_DIR is the deploy BASE; code lives in releases/<sha> built
+# by scripts/deploy-production.sh, with shared/.env + shared/storage.
+mkdir -p shared
+cp "$BACKUP_DIR/.env" shared/.env && chmod 600 shared/.env
 if [ -d "$BACKUP_DIR/storage" ]; then
-  mkdir -p storage
-  cp -a "$BACKUP_DIR/storage/." storage/
+  mkdir -p shared/storage
+  cp -a "$BACKUP_DIR/storage/." shared/storage/
 fi
+ln -sfn shared/.env .env
 # Any other local-only, gitignored state worth keeping can be copied manually
 # afterwards — compare with: diff -r --brief \"$BACKUP_DIR\" \"$APP_DIR\"
 

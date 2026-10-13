@@ -7,7 +7,7 @@ name: Deploy to VPS
 # Required GitHub configuration (DEPLOYMENT.md §GitHub setup):
 #   Secrets: VPS_HOST, VPS_USER, VPS_SSH_KEY, VPS_SSH_HOST_KEY
 #            (VPS_PORT optional, defaults to 22)
-#   Variables (optional overrides): VPS_APP_DIR, PM2_APP_NAME, APP_PORT, SITE_URL
+#   Variables (optional overrides): VPS_APP_DIR, VPS_PM2_APP, VPS_APP_PORT, VPS_DOMAIN
 on:
   push:
     branches: [main]
@@ -71,8 +71,8 @@ jobs:
           VPS_USER: ${{ secrets.VPS_USER }}
           VPS_PORT: ${{ secrets.VPS_PORT }}
           APP_DIR: ${{ vars.VPS_APP_DIR }}
-          PM2_APP_NAME: ${{ vars.PM2_APP_NAME }}
-          APP_PORT: ${{ vars.APP_PORT }}
+          PM2_APP_NAME: ${{ vars.VPS_PM2_APP }}
+          APP_PORT: ${{ vars.VPS_APP_PORT }}
         run: |
           ssh -i ~/.ssh/deploy_key -p "${VPS_PORT:-22}" \
             -o StrictHostKeyChecking=yes -o IdentitiesOnly=yes \
@@ -83,7 +83,7 @@ jobs:
 
       - name: Verify live site (public, via Nginx/HTTPS)
         env:
-          SITE_URL: ${{ vars.SITE_URL }}
+          SITE_URL: ${{ vars.VPS_DOMAIN }}
         run: |
           # If SITE_URL is explicitly configured it is a HARD gate: the deploy
           # is not "live" until the public URL answers. If it is unset we try
@@ -93,7 +93,7 @@ jobs:
           # turn this into a strict gate (DEPLOYMENT.md §DNS/proxy).
           strict=""
           [ -n "$SITE_URL" ] && strict=1
-          base="${SITE_URL:-https://learn.aloeducation.com}"
+          base="${SITE_URL:-learn.aloeducation.com}"; case "$base" in http*) : ;; *) base="https://$base" ;; esac
           base="${base%/}"
           echo "Checking $base (strict=${strict:-no}) ..."
           code="000"
