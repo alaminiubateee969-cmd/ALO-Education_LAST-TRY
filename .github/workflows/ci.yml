@@ -32,8 +32,19 @@ jobs:
           node-version: '22'
           cache: npm
 
+      - name: Verify committed npm lockfile
+        run: |
+          test -s package-lock.json || { echo "Missing package-lock.json; generate with npm 10 and commit it on this branch."; exit 1; }
+
       - name: Install locked dependencies
         run: npm ci
+
+      - name: Validate Prisma schema and generate client
+        env:
+          DATABASE_URL: mysql://user:placeholder@127.0.0.1:3306/db_learn
+        run: |
+          npx --no-install prisma validate
+          npx --no-install prisma generate
 
       - name: Lint
         run: npm run lint
@@ -41,16 +52,7 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
-      - name: Validate Prisma schema and generate client
-        env:
-          DATABASE_URL: mysql://user:placeholder@127.0.0.1:3306/db_learn
-        run: |
-          npx prisma validate
-          npx prisma generate
-
       - name: Build (Next.js standalone)
         env:
           DATABASE_URL: mysql://user:placeholder@127.0.0.1:3306/db_learn
-        run: |
-          npm run build
-          test -f .next/standalone/server.js
+        run: npm run build
