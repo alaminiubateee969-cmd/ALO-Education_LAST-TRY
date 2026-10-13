@@ -25,29 +25,29 @@ jobs:
         uses: actions/setup-node@v5
         with:
           node-version: '22'
+          cache: npm
 
-      - name: Set up Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: 1.3.4
+      - name: Verify committed npm lockfile
+        run: |
+          test -s package-lock.json || { echo "Missing package-lock.json; generate with npm 10 and commit it on this branch."; exit 1; }
 
       - name: Install locked dependencies
-        run: bun install --frozen-lockfile
-
-      - name: Lint
-        run: bun run lint
-
-      - name: Typecheck
-        run: bun run typecheck
+        run: npm ci
 
       - name: Validate Prisma schema and generate client
         env:
           DATABASE_URL: mysql://user:placeholder@127.0.0.1:3306/db_learn
         run: |
-          bunx prisma validate
-          bunx prisma generate
+          npx --no-install prisma validate
+          npx --no-install prisma generate
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
 
       - name: Build
         env:
           DATABASE_URL: mysql://user:placeholder@127.0.0.1:3306/db_learn
-        run: bun run build
+        run: npm run build
