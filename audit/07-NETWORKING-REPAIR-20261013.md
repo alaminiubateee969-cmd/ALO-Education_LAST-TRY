@@ -5,8 +5,9 @@ authenticated private networking (Tailscale), with production safety gates.
 **Repository:** `alaminiubateee969-cmd/ALO-LEARNING-JOURNEY-PRODUCTION`
 **Base commit:** `f266f9b274f9d9289da7eb234239bcbe1ad6c677` (current merged `main`)
 **Session branch:** `arena/65ec9bb3-alo-learning-journey-productio` (feature
-branch for this work; a PR targeting `main` is opened from it — nothing is
-merged or deployed without approval)
+branch for this work; PR targeting `main` is open at
+<https://github.com/alaminiubateee969-cmd/ALO-LEARNING-JOURNEY-PRODUCTION/pull/12>
+— nothing is merged or deployed without approval)
 **Server:** hosting.alolabs.net · Ubuntu 22.04.5 · LAN 192.168.0.24 · tailnet
 100.85.239.114 · `aloedu@:22` · PM2 `learn-aloeducation` :3017 — **self-hosted
 physical machine behind NAT, NOT a VPS/Hostinger**. The running application
@@ -87,7 +88,7 @@ preflight **hard-refuses** non-tailnet destinations.
 | # | Item | Status | Evidence / what remains |
 |---|---|---|---|
 | 1 | GitHub workflow syntax | **PASS** | `deploy.yml` + `ci.yml` parse as valid YAML; job graph `verify → network-preflight → deploy` validated; pinned action SHA present; `bash -n` on all shell blocks' scripts; `scripts/test-deploy-rollback.sh` green |
-| 2 | CI result (PR `validate`) | **PASS** | run recorded in the PR checks below (this branch's `validate` job green: npm ci, prisma validate/generate, lint, typecheck, tests incl. Sharp lazy-load + rollback test, production build) |
+| 2 | CI result (PR `validate`) | **PASS** | run [#38420650731](https://github.com/alaminiubateee969-cmd/ALO-LEARNING-JOURNEY-PRODUCTION/actions/runs/38420650731) **success** (1m27s): npm ci, prisma validate/generate, lint, typecheck, tests incl. Sharp lazy-load regression + rollback test, production build — all green on the PR |
 | 3 | Tailscale authentication | **UNVERIFIED** | requires `TAILSCALE_OAUTH_CLIENT_ID/SECRET` in repo secrets — not settable from this session (token is 403 on secrets). Evidence path: Actions → Deploy to VPS → **Run workflow → mode: preflight-only** after adding secrets |
 | 4 | Tailnet access permissions (ACL/grants) | **UNVERIFIED** | minimum-privilege policy delivered at `deploy/tailscale/acl.hujson` (`tag:github-runner → tag:alo-hosting :22` only); the tailnet owner must merge it in the admin console and tag the server `tag:alo-hosting` |
 | 5 | TCP port 22 connectivity (runner → server) | **UNVERIFIED** | from this sandbox (not on the tailnet) the probe correctly reports unreachable with guidance — that is the expected FAIL for a non-tailnet vantage. Real evidence = the `network-preflight` job logs (`PASS TCP 100.85.239.114:22 is open`) |
@@ -114,9 +115,15 @@ preflight **hard-refuses** non-tailnet destinations.
   * `SERVER_HOST=100.85.239.114` → destination **accepted**, TCP probe fails
     from this sandbox with an actionable message (this sandbox has no tailnet
     membership — expected).
-* CI (PR `validate`) green on this branch — see PR checks.
-* `network-preflight` run evidence is produced **without deploying** via
-  workflow_dispatch `mode: preflight-only` once the two Tailscale secrets exist.
+* CI (PR `validate`) **green** on this branch — run
+  [#38420650731](https://github.com/alaminiubateee969-cmd/ALO-LEARNING-JOURNEY-PRODUCTION/actions/runs/38420650731)
+  (`validate` job success, 1m27s, every step green).
+* `deploy.yml` was additionally validated by YAML parse + structural checks
+  (job graph, pinned action SHA, gate expressions) and `bash -n` on every
+  script. This session's GitHub token cannot create `workflow_dispatch` events
+  (`HTTP 403` on `actions/workflows/…/dispatches`), so a live `mode:
+  preflight-only` run must be triggered by the operator (checklist §8 step 5) —
+  that run is also the required evidence for matrix items 3–6.
 
 ## 6. Database and backup blockers (deployment stays disabled)
 
