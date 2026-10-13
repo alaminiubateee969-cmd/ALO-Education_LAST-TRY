@@ -38,7 +38,7 @@ jobs:
 
       - name: Validate Prisma and generate client
         env:
-          DATABASE_URL="mysql://ci:ci@127.0.0.1:3306/ci"
+          DATABASE_URL: "mysql://ci:ci@127.0.0.1:3306/ci"
         run: |
           npx prisma validate
           npx prisma generate
@@ -56,5 +56,5 @@ jobs:
 
       - name: Production build
         env:
-          DATABASE_URL="mysql://ci:ci@127.0.0.1:3306/ci"
+          DATABASE_URL: "mysql://ci:ci@127.0.0.1:3306/ci"
         run: npm run build
