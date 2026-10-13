@@ -31,7 +31,7 @@ The backup route's XOR obfuscation is **not encryption** and is not a safe produ
 - Database: MySQL Prisma schema has 31 models and one checked-in CRM delta migration. The legacy schema does not yet have a reviewed baseline migration; no production database change is approved.
 - Upload storage: current code writes below the process working directory and does not honor the configured `UPLOAD_DIR`.
 - CRM data: enquiry contact details and consent preferences are persisted per workspace. Do not store passports, immigration case files, health data, or payment-card details; secure CSV exports and apply a reviewed retention policy.
-- Deployment: the current working branch has a fail-closed deployment gate; it will not deploy. The audited `main` workflow at `03361c5f6bf19727907452ed0edc5247948b9466` used unverified host/path/process assumptions and must not be run.
+- Deployment: automatic pipeline implemented (PR → CI `validate` → merge to `main` → SSH deploy of the exact SHA with backup/migration/health gates → public health check). It becomes live only after the GitHub secrets/branch protection and one-time VPS setup in `DEPLOYMENT.md` are completed; no live deployment is verified yet.
 - Build, login/session, API, storage, integrations, DNS, HTTPS, and live health: not verified.
 
 See `DEPLOYMENT.md`, `SECURITY.md`, and `audit/` for the evidence and required follow-up.
