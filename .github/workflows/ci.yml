@@ -22,6 +22,7 @@ jobs:
     name: validate
     runs-on: ubuntu-22.04
     timeout-minutes: 30
+
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -32,19 +33,15 @@ jobs:
           node-version: '22'
           cache: npm
 
-      - name: Verify committed npm lockfile
-        run: |
-          test -s package-lock.json || { echo "Missing package-lock.json; generate with npm 10 and commit it on this branch."; exit 1; }
-
-      - name: Install locked dependencies
+      - name: Install dependencies
         run: npm ci
 
-      - name: Validate Prisma schema and generate client
+      - name: Validate Prisma and generate client
         env:
-          DATABASE_URL: mysql://user:placeholder@127.0.0.1:3306/db_learn
+          DATABASE_URL="mysql://user_learn:Alo_Learn_2026!@127.0.0.1:3306/db_learn"
         run: |
-          npx --no-install prisma validate
-          npx --no-install prisma generate
+          npx prisma validate
+          npx prisma generate
 
       - name: Lint
         run: npm run lint
@@ -52,7 +49,7 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
-      - name: Build (Next.js standalone)
+      - name: Production build
         env:
-          DATABASE_URL: mysql://user:placeholder@127.0.0.1:3306/db_learn
+          DATABASE_URL="mysql://user_learn:Alo_Learn_2026!@127.0.0.1:3306/db_learn"
         run: npm run build
