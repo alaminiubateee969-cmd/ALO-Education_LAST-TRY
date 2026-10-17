@@ -42,6 +42,15 @@ const MOODS = [
   { value: "reflective", label: "ভাবুক · Reflective" },
 ];
 
+/** Mureka-inspired starter templates ("Need inspiration? Explore templates") — each fills theme/mood/length. */
+const SONG_TEMPLATES = [
+  { id: "morning-learning", label: "🌅 শেখার সকাল · Morning learning", topic: "একসাথে বই পড়া ও শেখার সকাল", mood: "hopeful", durationSeconds: 45 },
+  { id: "journey-anthem", label: "✈️ যাত্রার গান · Journey anthem", topic: "স্বপ্ন নিয়ে নতুন দেশে পড়াশোনার যাত্রা", mood: "hopeful", durationSeconds: 60 },
+  { id: "playground", label: "⚽ খেলার মাঠ · Playground", topic: "বন্ধুদের সাথে খেলার মাঠে আনন্দ", mood: "playful", durationSeconds: 30 },
+  { id: "lullaby", label: "🌙 ঘুমের লোরি · Lullaby", topic: "রাতের নরম আলোয় ঘুমের লোরি", mood: "reflective", durationSeconds: 60 },
+  { id: "celebration", label: "🎉 উৎসব · Celebration", topic: "পরিবার নিয়ে উৎসবের আনন্দ", mood: "playful", durationSeconds: 45 },
+] as const;
+
 export default function AudioStudioView() {
   const { toast } = useToast();
   const [status, setStatus] = useState<Status | null>(null);
@@ -59,6 +68,8 @@ export default function AudioStudioView() {
   const [songTopic, setSongTopic] = useState("");
   const [mood, setMood] = useState("hopeful");
   const [songDuration, setSongDuration] = useState(45);
+  const [vocalPerspective, setVocalPerspective] = useState<"neutral" | "female" | "male">("neutral");
+  const [songBpm, setSongBpm] = useState(88);
   const [songBusy, setSongBusy] = useState(false);
   const [songResult, setSongResult] = useState<Song | null>(null);
   const [songError, setSongError] = useState("");
@@ -128,7 +139,12 @@ export default function AudioStudioView() {
       const response = await fetch("/api/music/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ topic: songTopic, mood, durationSeconds: songDuration }),
+        body: JSON.stringify({
+          topic: vocalPerspective === "neutral" ? songTopic : `${songTopic} (narrator voice: ${vocalPerspective})`,
+          mood,
+          durationSeconds: songDuration,
+          bpm: songBpm,
+        }),
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error ?? "Local song generation failed");
@@ -208,6 +224,38 @@ export default function AudioStudioView() {
           <div className="mb-4 flex items-center gap-2"><Music2 className="h-4 w-4 text-amber-600" /><div><h2 className="font-semibold">Songwriter + instrumental composer</h2><p className="text-xs text-muted-foreground">Lyrics use local Ollama or an honest fallback; the audio is a locally synthesized instrumental.</p></div></div>
           <div className="space-y-3">
             <div><Label htmlFor="song-topic" className="text-xs">Song theme</Label><Input id="song-topic" value={songTopic} onChange={(event) => setSongTopic(event.target.value)} maxLength={240} placeholder="যেমন: একসাথে বই পড়া ও শেখা" /></div>
+            <div>
+              <Label className="text-xs">Inspiration templates</Label>
+              <div className="mt-1 flex flex-wrap gap-1.5">
+                {SONG_TEMPLATES.map((t) => (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => { setSongTopic(t.topic); setMood(t.mood); setSongDuration(t.durationSeconds); }}
+                    className="rounded-full border border-border/70 px-2.5 py-1 text-[10px] transition-colors hover:bg-amber-500/10 hover:border-amber-400"
+                  >
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <Label htmlFor="vocal-perspective" className="text-xs">Vocal perspective (lyrics voice)</Label>
+              <select id="vocal-perspective" value={vocalPerspective} onChange={(event) => setVocalPerspective(event.target.value as "neutral" | "female" | "male")} className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm">
+                <option value="neutral">Neutral / narrator</option>
+                <option value="female">Female narrator</option>
+                <option value="male">Male narrator</option>
+              </select>
+            </div>
+            <div>
+              <Label htmlFor="song-bpm" className="text-xs">Tempo (BPM)</Label>
+              <select id="song-bpm" value={songBpm} onChange={(event) => setSongBpm(Number(event.target.value))} className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm">
+                <option value={72}>72 — slow & gentle</option>
+                <option value={88}>88 — default</option>
+                <option value={104}>104 — upbeat</option>
+                <option value={120}>120 — lively</option>
+              </select>
+            </div>
             <div className="grid gap-3 sm:grid-cols-2">
               <div><Label htmlFor="song-mood" className="text-xs">Mood</Label><select id="song-mood" value={mood} onChange={(event) => setMood(event.target.value)} className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm">{MOODS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></div>
               <div><Label htmlFor="song-duration" className="text-xs">Instrumental length</Label><select id="song-duration" value={songDuration} onChange={(event) => setSongDuration(Number(event.target.value))} className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"><option value={30}>30 seconds</option><option value={45}>45 seconds</option><option value={60}>60 seconds</option><option value={90}>90 seconds</option></select></div>

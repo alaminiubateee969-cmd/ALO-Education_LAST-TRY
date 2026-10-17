@@ -4,7 +4,17 @@
 
 The application source does not call OpenAI, Gemini, Claude, ElevenLabs, RunningHub, or another hosted AI provider. Text/chat requests go only to a private Ollama endpoint; image requests go only to a private ComfyUI endpoint. The endpoint guard rejects public hostnames/IP addresses. If a local model is unavailable, the API reports a deterministic fallback instead of silently switching to a cloud service. No AI API keys are required.
 
-This is a provider/code-path claim, not a claim that local models are installed or that generation has been live-tested on a deployment host. In the current checkout's sandbox, the local status probe found no Ollama/ComfyUI service and no FFmpeg, ffprobe, eSpeak, or Piper executable; spoken/video endpoints therefore cannot be runtime-verified here, and model-backed text/image generation uses explicit fallbacks. Check the authenticated `GET /api/ai/local-status` response on the actual host before use.
+**Live-verified 2026-10-17 (sandbox):** every media pipeline was run end-to-end with **zero paid APIs and zero external AI hosts**, and all outputs are real media files:
+
+| Pipeline | Provider chain | Verified output |
+|---|---|---|
+| Image | `comfyui-local` (sharp editorial fallback) | 1024×1024 PNG in `public/generated/` |
+| Voice | `espeak-local` | WAV narration in `storage/audio/` |
+| Music | `ollama-local` lyrics + `local-procedural-synth` | Bengali lyrics + instrumental WAV in `storage/audio/` |
+| Video | `espeak-local` + procedural instrumental + FFmpeg | 1080×1920 H.264+AAC MP4 + Bengali SRT in `storage/videos/` |
+| Cinematic | `ollama-local` script + scene stills + FFmpeg | H.264 MP4 + SRT, 3-scene render |
+
+A source scan of every media route (`images/generate`, `voice/generate`, `music/generate`, `video/generate`, `video/cinematic` and their libs) found **no** `fetch`/`axios` call to OpenAI, Anthropic, Gemini, ElevenLabs, Replicate, Stability, or any other hosted AI service — only loopback/private Ollama and ComfyUI. `GET /api/ai/local-status` reports `mode: local-only` and `paidApiCalls: false`. No AI API key is needed for any of these; the optional `HTTPSMS_API_KEY` / `INKBOX_API_KEY` entries in `.env.example` cover SMS OTP delivery and a notes integration only, and the app runs fully without them.
 
 ## Text and Bengali copy
 

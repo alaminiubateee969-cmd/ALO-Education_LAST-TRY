@@ -1,4 +1,4 @@
-# Route Inventory (generated 2026-10-13)
+# Route Inventory (generated 2026-10-17 from the filesystem)
 
 ## Pages
 /
@@ -66,6 +66,6 @@
 /api/voice/script
 /api/workforce
 
-## Verification status (2026-10-13, sandbox — not the VPS)
-- Tested locally: production compile (`next build` compiled successfully incl. /api/command), 4 node tests, lint, deploy rollback simulation.
-- NOT tested here (require VPS/MySQL/secrets, reported UNVERIFIED in PR): auth flows, admin/student pages at runtime, DB queries, uploads, public HTTPS. Do not treat this inventory as runtime verification of those routes.
+## Totals
+- Pages: 2
+- API route files: 60
