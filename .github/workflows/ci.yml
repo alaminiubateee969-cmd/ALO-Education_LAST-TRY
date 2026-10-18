@@ -1,0 +1,154 @@
+name: CI
+
+# Verified-PR gate: every pull request into main must pass this workflow.
+# The stack is Node 22 + npm (package-lock.json is the canonical lockfile —
+# verified VPS uses npm 10.9.9; Bun is not used in CI or production).
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: validate
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate Prisma and generate client
+        env:
+          DATABASE_URL: "mysql://ci:ci@127.0.0.1:3306/ci"
+        run: |
+          npx prisma validate
+          npx prisma generate
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Schema ↔ migration parity (engine-free drift gate)
+        run: node scripts/verify-migration-parity.mjs
+
+      - name: Secret scan (no credential material in the repo)
+        run: bash scripts/secret-scan.sh
+
+      - name: Tests (auth/OTP, CRM, fallback store, parity, guards, deploy invariants)
+        run: |
+          node --test tests/*.test.mjs
+          bash scripts/test-deploy-rollback.sh
+
+      - name: Production build
+        env:
+          DATABASE_URL: "mysql://ci:ci@127.0.0.1:3306/ci"
+        run: npm run build
+
+  # ── Migration verification on an ISOLATED test database ────────────────────
+  # Applies the real migration chain to a disposable MySQL 8 service container
+  # (never a production database), then proves three properties:
+  #   1. apply: `prisma migrate deploy` succeeds from an empty database;
+  #   2. drift: the resulting schema is byte-identical to schema.prisma
+  #      (`migrate diff --exit-code` fails on any difference);
+  #   3. idempotency: a second `migrate deploy` is a no-op (deployment-level
+  #      idempotence — re-running the pipeline never rewrites the schema).
+  migrations:
+    name: migrations (isolated MySQL)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: ci_migrate
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 --silent"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=12
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Wait for MySQL
+        run: |
+          for i in $(seq 1 30); do
+            if mysqladmin ping -h 127.0.0.1 --silent 2>/dev/null; then
+              echo "MySQL is up"; exit 0
+            fi
+            sleep 2
+          done
+          echo "MySQL did not become ready"; exit 1
+
+      - name: Apply migrations to the isolated database
+        env:
+          DATABASE_URL: "mysql://root:root@127.0.0.1:3306/ci_migrate"
+        run: npx prisma migrate deploy
+
+      - name: Verify all 33 tables exist (32 models + implicit m2m join)
+        env:
+          DATABASE_URL: "mysql://root:root@127.0.0.1:3306/ci_migrate"
+        run: |
+          count=$(mysql -h 127.0.0.1 -u root -proot -N -e \
+            "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='ci_migrate' AND table_name != '_prisma_migrations'")
+          echo "tables (excluding _prisma_migrations): $count"
+          [ "$count" -eq 33 ] || { echo "::error::expected 33 tables, found $count"; exit 1; }
+          applied=$(mysql -h 127.0.0.1 -u root -proot -N -e \
+            "SELECT COUNT(*) FROM ci_migrate._prisma_migrations WHERE finished_at IS NOT NULL")
+          echo "applied migrations: $applied"
+          [ "$applied" -eq 3 ] || { echo "::error::expected 3 applied migrations, found $applied"; exit 1; }
+
+      - name: Drift gate — applied schema must match schema.prisma exactly
+        env:
+          DATABASE_URL: "mysql://root:root@127.0.0.1:3306/ci_migrate"
+        run: |
+          npx prisma migrate diff \
+            --from-url "$DATABASE_URL" \
+            --to-schema-datamodel prisma/schema.prisma \
+            --exit-code
+
+      - name: Idempotency — a second migrate deploy must be a no-op
+        env:
+          DATABASE_URL: "mysql://root:root@127.0.0.1:3306/ci_migrate"
+        run: |
+          out=$(npx prisma migrate deploy)
+          echo "$out"
+          if echo "$out" | grep -qE "Applying migration|Following migration"; then
+            echo "::error::second deploy attempted to apply migrations — not idempotent"
+            exit 1
+          fi
