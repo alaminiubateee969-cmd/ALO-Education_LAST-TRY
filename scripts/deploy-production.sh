@@ -90,7 +90,7 @@ chmod 600 "$BACKUP_FILE"
 gzip -t "$BACKUP_FILE" && [ -s "$BACKUP_FILE" ] || fail "backup failed integrity check"
 zcat "$BACKUP_FILE" | head -c 4096 | grep -qi "MySQL dump\|CREATE TABLE" || fail "backup content probe failed"
 log "verified backup: $BACKUP_FILE ($(du -h "$BACKUP_FILE" | cut -f1))"
-npx prisma migrate status || fail "prisma migrate status failed — refusing to migrate"
+npx prisma migrate status || log "note: migrate status is non-zero — expected while unapplied migrations exist (first reconciliation deploy); migrate deploy below is the enforcing gate and refuses to continue if any migration is marked failed"
 npx prisma migrate deploy || { log "migrate deploy failed; live release untouched, DB left as-is (manual review; backup: $BACKUP_FILE)"; fail "migration failed"; }
 
 npm run build || fail "build failed (live release untouched)"
