@@ -8,7 +8,7 @@
 
 | Check | Method | Result |
 |---|---|---|
-| No credential material in tracked files | **NEW** `scripts/secret-scan.sh` (private keys, GitHub/OpenAI/AMS tokens, credential-bearing DB URLs with placeholder allow-list matched against the user:password portion only) | ✅ clean on the full tree; negative control (staged file with fake `mysql://realuser:…@`, `ghp_…`, `-----BEGIN RSA PRIVATE KEY-----`) correctly produces 3 findings and exit 1 |
+| No credential material in tracked files | **NEW** `scripts/secret-scan.sh` (PEM private-key headers, GitHub/OpenAI/AMS token shapes, credential-bearing DB URLs with placeholder allow-list matched against the user:password portion only) | ✅ clean on the full tree; negative control (a staged file carrying a fake credential-bearing DB URL, a GitHub token, and a PEM private-key header) correctly produces 3 findings and exit 1 |
 | No `.env`, dumps, or backups tracked | `git ls-files` pattern scan | ✅ only `.env.example` (placeholders) |
 | Audit docs contain no live credentials | targeted grep over `audit/`, root docs | ✅ only pattern *descriptions* (e.g. the documented scanner regexes) |
 | Deploy/workflow files never echo secrets | review of `deploy.yml` + `deploy-production.sh` | ✅ `DATABASE_URL` parsed in-process into a 0600 temp env file, deleted on exit |
