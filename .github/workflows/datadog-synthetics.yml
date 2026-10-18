@@ -22,6 +22,11 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    # Datadog Synthetic tests only run when the DD_API_KEY / DD_APP_KEY secrets
+    # are configured for this repository. Without keys the action fails on
+    # every push (observed on main, 2026-10-18); skipping is intentional —
+    # configure the secrets or delete this workflow if Datadog is not used.
+    if: ${{ secrets.DD_API_KEY != '' && secrets.DD_APP_KEY != '' }}
 
     steps:
     - uses: actions/checkout@v4

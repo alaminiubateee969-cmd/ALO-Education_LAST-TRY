@@ -61,3 +61,7 @@ tsconfig.tsbuildinfo
 # fingerprint of .env, and .releases/ records rollback SHAs.
 .backups/
 .releases/
+
+# Integration-test build output (tests/helpers/compile-ts.mjs compiles selected
+# src/lib modules here so node --test can import them without a bundler).
+.tmp-tests/
