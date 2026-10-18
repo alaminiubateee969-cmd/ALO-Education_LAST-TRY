@@ -9,9 +9,11 @@ const MAX_SENDS_PER_WINDOW = 3;
 const MAX_VERIFY_ATTEMPTS = 5;
 
 export class AdminOtpRateLimitError extends Error {
-  constructor(readonly retryAfterSeconds: number) {
+  readonly retryAfterSeconds: number;
+  constructor(retryAfterSeconds: number) {
     super("OTP request rate limit reached");
     this.name = "AdminOtpRateLimitError";
+    this.retryAfterSeconds = retryAfterSeconds;
   }
 }
 

@@ -105,6 +105,68 @@ const MODEL_DEFAULTS: Record<ModelName, () => Record<string, any>> = {
   quotationItem: () => ({ quantity: 1, unitPrice: "0.00", lineTotal: "0.00", position: 0 }),
 };
 
+// Unique constraints mirrored from prisma/schema.prisma so the fallback
+// rejects duplicates exactly like MySQL does (error.code === "P2002",
+// which src/lib/admin-otp.ts relies on for OTP race handling).
+const UNIQUE_FIELDS: Partial<Record<ModelName, string[]>> = {
+  adminOtpChallenge: ["phoneHash"],
+  quotation: ["number"],
+};
+const COMPOSITE_UNIQUES: Partial<Record<ModelName, string[][]>> = {
+  socialConnection: [["platform", "accountName"]],
+};
+
+function uniqueViolationError(model: string, fields: string[]): Error {
+  const error = new Error(
+    `Unique constraint failed on the constraint: \`${model}_${fields.join("_")}_key\``,
+  ) as Error & { code?: string; clientVersion?: string; meta?: unknown };
+  error.code = "P2002";
+  error.clientVersion = "local-fallback";
+  error.meta = { target: fields };
+  return error;
+}
+
+function assertUnique(store: LocalStore, model: ModelName, record: Record<string, any>, skipId?: string): void {
+  for (const field of UNIQUE_FIELDS[model] ?? []) {
+    const value = record[field];
+    if (value === undefined || value === null) continue;
+    const clash = store
+      .getRows(model)
+      .some((row) => row.id !== skipId && row[field] === value);
+    if (clash) throw uniqueViolationError(model, [field]);
+  }
+  for (const fields of COMPOSITE_UNIQUES[model] ?? []) {
+    const values = fields.map((f) => record[f]);
+    if (values.some((v) => v === undefined || v === null)) continue;
+    const clash = store
+      .getRows(model)
+      .some((row) => row.id !== skipId && fields.every((f, i) => row[f] === values[i]));
+    if (clash) throw uniqueViolationError(model, fields);
+  }
+}
+
+// ON DELETE CASCADE relations mirrored from prisma/schema.prisma:
+// Company→Lead, Lead→(LeadActivity, Quotation), Quotation→QuotationItem,
+// FamilyProfile→FamilyReferenceAsset. `removed` are rows already deleted
+// (or about to be) from `model`; their dependants are removed recursively.
+function cascadeDeleted(store: LocalStore, model: ModelName, removed: Array<Record<string, any>>): void {
+  if (removed.length === 0) return;
+  const ids = new Set(removed.map((r) => r.id));
+  if (model === "company") {
+    const leads = store.getRows("lead").filter((l) => ids.has(l.companyId));
+    cascadeDeleted(store, "lead", leads);
+  } else if (model === "lead") {
+    const quotations = store.getRows("quotation").filter((q) => ids.has(q.leadId));
+    cascadeDeleted(store, "quotation", quotations);
+    store.setRows("leadActivity", store.getRows("leadActivity").filter((a) => !ids.has(a.leadId)));
+  } else if (model === "quotation") {
+    store.setRows("quotationItem", store.getRows("quotationItem").filter((i) => !ids.has(i.quotationId)));
+    store.setRows("quotation", store.getRows("quotation").filter((q) => !ids.has(q.id)));
+  } else if (model === "familyProfile") {
+    store.setRows("familyReferenceAsset", store.getRows("familyReferenceAsset").filter((a) => !ids.has(a.profileId)));
+  }
+}
+
 const UPDATED_AT_MODELS = new Set<ModelName>([
   "company",
   "socialConnection",
@@ -453,6 +515,7 @@ function createModelDelegate(model: ModelName) {
         record.updatedAt = now;
       }
       const revived = reviveRecord(record);
+      assertUnique(store, model, revived);
       store.getRows(model).push(revived);
 
       if (model === "quotation" && nestedItems) {
@@ -500,6 +563,7 @@ function createModelDelegate(model: ModelName) {
         next.updatedAt = new Date();
       }
       const revived = reviveRecord(next);
+      assertUnique(store, model, revived, revived.id);
       rows[idx] = revived;
       store.save();
       return store.attachRelations(model, revived, args.include, args.select);
@@ -523,7 +587,9 @@ function createModelDelegate(model: ModelName) {
           if (UPDATED_AT_MODELS.has(model)) {
             next.updatedAt = new Date();
           }
-          rows[i] = reviveRecord(next);
+          const revivedMany = reviveRecord(next);
+          assertUnique(store, model, revivedMany, revivedMany.id);
+          rows[i] = revivedMany;
           count++;
         }
       }
@@ -545,19 +611,7 @@ function createModelDelegate(model: ModelName) {
       const idx = rows.findIndex((row) => store.matchesWhere(model, row, args.where));
       if (idx === -1) throw new Error(`Record to delete not found in ${model}`);
       const [removed] = rows.splice(idx, 1);
-
-      // Cascade delete support
-      if (model === "lead") {
-        store.setRows("leadActivity", store.getRows("leadActivity").filter((a) => a.leadId !== removed.id));
-        const quoteIds = new Set(store.getRows("quotation").filter((q) => q.leadId === removed.id).map((q) => q.id));
-        store.setRows("quotationItem", store.getRows("quotationItem").filter((item) => !quoteIds.has(item.quotationId)));
-        store.setRows("quotation", store.getRows("quotation").filter((q) => q.leadId !== removed.id));
-      } else if (model === "quotation") {
-        store.setRows("quotationItem", store.getRows("quotationItem").filter((item) => item.quotationId !== removed.id));
-      } else if (model === "familyProfile") {
-        store.setRows("familyReferenceAsset", store.getRows("familyReferenceAsset").filter((a) => a.profileId !== removed.id));
-      }
-
+      cascadeDeleted(store, model, [removed]);
       store.save();
       return removed;
     },
@@ -565,10 +619,14 @@ function createModelDelegate(model: ModelName) {
     async deleteMany(args?: { where?: Record<string, any> }) {
       const store = getStore();
       const rows = store.getRows(model);
+      const removed = rows.filter((row) => store.matchesWhere(model, row, args?.where));
       const remaining = rows.filter((row) => !store.matchesWhere(model, row, args?.where));
-      const count = rows.length - remaining.length;
+      const count = removed.length;
       store.setRows(model, remaining);
-      if (count > 0) store.save();
+      if (count > 0) {
+        cascadeDeleted(store, model, removed);
+        store.save();
+      }
       return { count };
     },
   };
